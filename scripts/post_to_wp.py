@@ -145,7 +145,8 @@ def main() -> None:
 
     # フロントマターに submitted フラグを追加
     fm_post["submitted"] = True
-    frontmatter.dump(fm_post, md_path.open("w", encoding="utf-8"))
+    updated = frontmatter.dumps(fm_post) 
+    md_path.write_text(updated, encoding="utf-8")
     print("📝 frontmatter updated:", md_path)
     print("🎉 All done →", link)
 
