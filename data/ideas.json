@@ -123,6 +123,13 @@
     "slug": "communication-radar-chart-checkin",
     "title": "レーダーチャートチェックインで感情の凹凸を見える化",
     "prompt": "メンバーの感情・コンディションを6軸レーダーで可視化し、チーム状態を共有する方法を提案してください。"
+  }
+]
+[
+  {
+    "slug": "momentum-visible-progress",
+    "title": "進捗を見える化するカンバン＋WIP制限",
+    "prompt": "カンバンボードにWIP制限を導入し、タスク停滞を防いで流れを加速する方法を解説してください。"
   },
   {
     "slug": "momentum-start-small-sprint",
@@ -130,22 +137,263 @@
     "prompt": "大規模プロジェクトをまず2週間MVPに落とし込み、成功体験を積み重ねる進行法を紹介してください。"
   },
   {
-    "slug": "momentum-visible-progress",
-    "title": "進捗を可視化する“カンバン+WIP制限”の威力",
-    "prompt": "WIP制限を導入してタスクの停滞を防ぎ、チームの流れを最大化する実践例を解説してください。"
-  },
-  {
     "slug": "momentum-daily-standup-3q",
-    "title": "デイリースタンドアップを3つの質問だけで回す",
-    "prompt": "毎日15分以内で終わるスタンドアップを設計し、継続率を上げる工夫を提案してください。"
+    "title": "デイリースタンドアップを3つの質問で15分以内に",
+    "prompt": "スタンドアップを短時間で終わらせつつ情報共有を最大化する3Qフォーマットを提案してください。"
   },
   {
-    "slug": "momentum-celebrate-micro-win",
-    "title": "“マイクロ勝利”を祝うカルチャーで加速を生む",
-    "prompt": "小さな達成を可視化・共有し、成功ループを回す施策を紹介してください。"
+    "slug": "momentum-celebrate-micro-wins",
+    "title": "“マイクロ勝利”を祝う文化で加速するチーム",
+    "prompt": "小さな達成を即時可視化し、ポジティブループを生む施策を紹介してください。"
   },
   {
-    "slug": "momentum-bot-nudge",
-    "title": "Slackボットの“ナッジ”で締切を守るチームへ",
-    "prompt": "リマインダーボットを活用して締切遵守率を上げた事例と設定ポイントを解説してください。"
+    "slug": "momentum-slack-nudge-bot",
+    "title": "Slackナッジボットで締切遵守率を爆上げ",
+    "prompt": "リマインダーボットを活用し、締切直前の行動を促す設定と運用Tipsをまとめてください。"
   },
+  {
+    "slug": "momentum-focus-hours",
+    "title": "“フォーカスアワー”で深い仕事を取り戻す",
+    "prompt": "午前中2時間を通知オフにする“フォーカスアワー”制度の導入と定着方法を説明してください。"
+  },
+  {
+    "slug": "momentum-weekly-demo-day",
+    "title": "週次デモデーで価値提供サイクルを高速化",
+    "prompt": "社内デモデーを運営し、アウトプット→学習→改善のループを短縮する方法を紹介してください。"
+  },
+  {
+    "slug": "momentum-timeboxing-pomodoro",
+    "title": "ポモドーロ×タイムボクシングで集中力を維持",
+    "prompt": "25分作業＋5分休憩をチームで同期させ、生産性を上げる運用例を解説してください。"
+  },
+  {
+    "slug": "momentum-sprint-goal-banner",
+    "title": "スプリントゴールを“バナー化”して常に視界に",
+    "prompt": "オフィス・バーチャル背景にゴールを掲示し、意識統一を図る仕組みを提案してください."
+  },
+  {
+    "slug": "momentum-retro-action-tracking",
+    "title": "レトロスペクティブ“決定事項”をトラッキングする",
+    "prompt": "レトロで出たアクションアイテムをボード化し、完了まで追跡するフローを説明してください。"
+  },
+  {
+    "slug": "momentum-goal-gradient-effect",
+    "title": "ゴールグラデーション効果で最後まで走り切る",
+    "prompt": "残タスクを視覚的に“減色”表示し、終盤の加速を促すUIの例を紹介してください。"
+  },
+  {
+    "slug": "momentum-30-60-90-plan",
+    "title": "新人の“30-60-90日プラン”で立ち上がりを2倍速に",
+    "prompt": "Momentumを失わないオンボーディングプランの作り方とフォローのコツを解説してください。"
+  },
+  {
+    "slug": "momentum-checkpoint-milestones",
+    "title": "中間マイルストーンで“大きな山”を分割攻略",
+    "prompt": "半年プロジェクトを小分けマイルストーンに落とし込み、進捗感を維持する手法を紹介してください。"
+  },
+  {
+    "slug": "momentum-dopamine-dashboard",
+    "title": "ドーパミンダッシュボードでやる気を可視化",
+    "prompt": "達成時にアニメーション＆音で報酬刺激を与え、継続行動を促すダッシュボード例を提案してください。"
+  },
+  {
+    "slug": "momentum-danger-zone-alert",
+    "title": "停滞サインを検知する“Danger Zone”アラート",
+    "prompt": "WIPカードがx日動かなければ赤枠表示→リーダーに通知する仕組みを実装してください。"
+  },
+  {
+    "slug": "momentum-gamified-sprint-badges",
+    "title": "スプリントバッジでゲーミフィケーション加速",
+    "prompt": "目標達成ごとにバッジを配布し、Slackプロフィールに表示する運用を紹介してください。"
+  },
+  {
+    "slug": "momentum-quick-win-kanban",
+    "title": "“Quick Win”レーンで即効性タスクを一網打尽",
+    "prompt": "カンバンにQuick Win専用レーンを作り、モメンタムを付ける活用法を解説してください。"
+  },
+  {
+    "slug": "momentum-pair-working-day",
+    "title": "週1ペアワーキングデーで知識拡散と加速を両立",
+    "prompt": "ローテーションペア作業を導入し、ナレッジ共有と作業速度を同時に高める方法を提案してください。"
+  },
+  {
+    "slug": "momentum-feedback-friday",
+    "title": "“フィードバックFriday”で改善ループを毎週回す",
+    "prompt": "毎週金曜に15分のフィードバックタイムを設け、週次PDCAを回す仕組みを紹介してください。"
+  },
+  {
+    "slug": "momentum-roadblock-board",
+    "title": "阻害要因を即可視化する“Roadblockボード”",
+    "prompt": "詰まったタスクをロードブロックとして貼り出し、チームで即解決するフローを解説してください。"
+  },
+  {
+    "slug": "momentum-sprint-review-showcase",
+    "title": "レビューを“ショーケース”化し外部から刺激を得る",
+    "prompt": "Sprint Reviewに社外ゲストを招き、真剣度と達成モチベを上げる方法を提案してください。"
+  },
+  {
+    "slug": "momentum-focus-music-room",
+    "title": "集中音楽ルームで同時フロー状態を作る実験",
+    "prompt": "バーチャル空間で集中BGM共有し、同時フロー体験を生む取り組みを紹介してください。"
+  },
+  {
+    "slug": "momentum-two-minute-rule",
+    "title": "“2分で出来るタスク”即実行ルールで停滞ゼロへ",
+    "prompt": "2分以内タスクをその場で処理する行動原則をチームに浸透させる方法を説明してください。"
+  },
+  {
+    "slug": "momentum-kickoff-energizer",
+    "title": "キックオフ“エナジャイザー”ゲームで勢いを付ける",
+    "prompt": "プロジェクト開始時に活気を注入するアイスブレイクゲームを提案してください。"
+  },
+  {
+    "slug": "momentum-sprint-health-metrics",
+    "title": "スプリント健康診断で早期に停滞リスクを察知",
+    "prompt": "バーンダウン速度・WIP日数など指標をダッシュボード化し、異常値でアラートする仕組みを解説してください."
+  },
+  {
+    "slug": "momentum-trello-powerups",
+    "title": "Trello Power-Upsで自動化→手戻りゼロへ",
+    "prompt": "Trelloのプラグイン活用でフロー自動化し、チームの手戻りを削減した事例を紹介してください。"
+  },
+  {
+    "slug": "momentum-github-automerge",
+    "title": "GitHubオートマージでレビュー渋滞を解消",
+    "prompt": "CIパス＆承認2件で自動マージする設定と運用注意点を説明してください。"
+  },
+  {
+    "slug": "momentum-focus-retreat",
+    "title": "月1“集中リトリート”でタスクを一気に片付ける",
+    "prompt": "合宿形式でバックログを一掃し、達成感でモメンタムを上げる企画を提案してください。"
+  },
+  {
+    "slug": "momentum-daily-target-boards",
+    "title": "デイリーターゲットボードで朝に目標を宣言",
+    "prompt": "毎朝チームが今日の最重要タスクを宣言し、終業時に振り返るボード運用を紹介してください。"
+  },
+  {
+    "slug": "momentum-random-coffee",
+    "title": "“ランダムコーヒー”で新しい刺激を注入",
+    "prompt": "ランダムマッチングで他部署と15分雑談し、視点を変えて加速する取り組みを提案してください。"
+  },
+  {
+    "slug": "momentum-fail-fast-board",
+    "title": "Fail-Fastボードで失敗を小さく早く共有",
+    "prompt": "小さな失敗を早期共有し、再発防止＆学習速度を上げるボードの使い方を解説してください。"
+  },
+  {
+    "slug": "momentum-sprint-goal-tshirts",
+    "title": "スプリントゴールをTシャツにプリントして士気UP",
+    "prompt": "物理グッズでゴールを可視化し、メンバーの主体性を高めた事例を紹介してください。"
+  },
+  {
+    "slug": "momentum-5-minute-sync",
+    "title": "“5分同期”で急ぎの意思決定を即済ませる",
+    "prompt": "Slackハドルを活用した5分同期ミーティング文化を提案してください。"
+  },
+  {
+    "slug": "momentum-roadmap-rally",
+    "title": "ロードマップ・ラリーで先読み力を育てる",
+    "prompt": "半年ロードマップを一望し、各自が貢献アイデアを貼るワークショップを紹介してください。"
+  },
+  {
+    "slug": "momentum-one-thing-rule",
+    "title": "午前中は“最重要1タスクだけ”ルール",
+    "prompt": "午前中に最重要タスクを終わらせる行動設計とチーム運用のコツをまとめてください。"
+  },
+  {
+    "slug": "momentum-victory-wall",
+    "title": "勝利の壁“Victory Wall”で成果を飾ろう",
+    "prompt": "達成タスクや顧客フィードバックを壁/ボードに貼り出す習慣を提案してください。"
+  },
+  {
+    "slug": "momentum-auto-assign-bot",
+    "title": "タスク自動アサインBotで着手遅れをゼロに",
+    "prompt": "キューに入ったタスクを自動で次の空きメンバーに割り当てる仕組みを解説してください。"
+  },
+  {
+    "slug": "momentum-kickoff-video-trailer",
+    "title": "プロジェクト開始を動画トレーラーで盛り上げる",
+    "prompt": "Kickoff前に30秒PVを作り、期待感と勢いを高めた実例を紹介してください。"
+  },
+  {
+    "slug": "momentum-public-okrs",
+    "title": "OKRを“社内公開”して透明性と推進力を両立",
+    "prompt": "部門OKRを社内wikiで公開し、横断サポートを促す運用を解説してください。"
+  },
+  {
+    "slug": "momentum-focus-music-playlist",
+    "title": "集中BGMプレイリストをみんなでキュレーション",
+    "prompt": "Spotify共同プレイリストで集中曲を共有し、作業モードを瞬時に切り替える施策を紹介してください."
+  },
+  {
+    "slug": "momentum-burnup-chart",
+    "title": "バーンアップチャートで達成傾向を可視化",
+    "prompt": "完了ストーリー数の累積をチャート化し、先行き見通しをモチベーションに変える方法を紹介してください."
+  },
+  {
+    "slug": "momentum-lunch-learn",
+    "title": "ランチ＆ラーニングで学習と栄養を同時に補給",
+    "prompt": "週1回のランチ学習会で新技術共有とエネルギーチャージを両立する運営案を提案してください."
+  },
+  {
+    "slug": "momentum-focus-friday",
+    "title": "金曜午後は“会議ゼロ”で集中タイムに",
+    "prompt": "金曜の会議を禁止し、個人タスクに没頭するルールを導入して成果を上げた例を紹介してください."
+  },
+  {
+    "slug": "momentum-backlog-groom-powerhour",
+    "title": "“パワーアワー”でバックログを一気に整理",
+    "prompt": "1時間だけ全員でチケット整理に集中し、タスク軽量化を図るワークショップを説明してください."
+  },
+  {
+    "slug": "momentum-stretch-goal-sprint",
+    "title": "ストレッチゴールを敢えて設定して限界突破",
+    "prompt": "達成率120%を狙うストレッチゴール設定と心理マネジメントを解説してください."
+  },
+  {
+    "slug": "momentum-ship-it-saturday",
+    "title": "月1“Ship-It Saturday”でプロジェクトを完遂",
+    "prompt": "休日に有志が集まり、1日でリリースまで持っていくイベントの運営術を紹介してください."
+  },
+  {
+    "slug": "momentum-feedback-loop-metrics",
+    "title": "フィードバックループを短縮する4指標",
+    "prompt": "Lead Time, Cycle Time など4つの指標をトラッキングし、改善サイクルを高速化する方法を解説してください."
+  },
+  {
+    "slug": "momentum-scrum-poker-gamify",
+    "title": "スクラムポーカーをゲーミフィケーションで盛り上げる",
+    "prompt": "ポイント予想にランキングや報酬を導入し、見積もり精度を高めた施策を紹介してください."
+  },
+  {
+    "slug": "momentum-buddy-system-kick",
+    "title": "バディ制度で新メンバーの加速立ち上げ",
+    "prompt": "新人とバディをペアにし、最初の4週で目に見える成果を出す仕組みを解説してください."
+  },
+  {
+    "slug": "momentum-daily-shipping",
+    "title": "“毎日リリース”文化で恐怖心を打破する",
+    "prompt": "CI/CDを整備し、毎日リリースを実現したフローパターンとベネフィットを紹介してください."
+  },
+  {
+    "slug": "momentum-retro-quick-fire",
+    "title": "クイックファイヤー・レトロで気付き量を増幅",
+    "prompt": "1人1分でGood/Badを出し切る高速レトロのファシリテーションを説明してください."
+  },
+  {
+    "slug": "momentum-task-switching-tax",
+    "title": "タスク切り替えコストを可視化して削減",
+    "prompt": "マルチタスクの損失を数値化し、WIP最適化につなげた方法を解説してください."
+  },
+  {
+    "slug": "momentum-coffee-coding-sprint",
+    "title": "コーヒーコーディングスプリントで朝を制する",
+    "prompt": "朝9時〜11時を固定ペアプログラミングとし、バグ率と手戻りを減らした事例を紹介してください."
+  },
+  {
+    "slug": "momentum-great-catch-board",
+    "title": "“Great Catch”ボードで問題発見を称賛",
+    "prompt": "ミスの早期発見者を称賛する文化を作り、品質とモメンタムを両立した例を提案してください."
+  }
+]
