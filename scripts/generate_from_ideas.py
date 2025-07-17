@@ -2,12 +2,12 @@
 import json, os, datetime, pathlib
 from openai import OpenAI
 
-# ── パス設定 ──────────────────────────────
+# ────────────────── パス設定 ──────────────────
 BASE      = pathlib.Path(__file__).resolve().parent.parent
-POSTS_DIR = BASE / "posts" / "sabou"          # 出力先を sabou に変更
+POSTS_DIR = BASE / "posts" / "sabou"          # 出力先
 IDEA_FILE = BASE / "data" / "ideas.json"
 
-# ── 共通関数 ──────────────────────────────
+# ───────────────── 共通関数 ──────────────────
 def load_ideas() -> list[dict]:
     """ideas.json をロードして返す"""
     with IDEA_FILE.open(encoding="utf-8") as f:
@@ -40,17 +40,17 @@ def generate_article(client: OpenAI, idea: dict) -> str:
     )
     return resp.choices[0].message.content.strip()
 
-# ── メイン処理 ─────────────────────────────
+# ───────────────── メイン処理 ─────────────────
 def main() -> None:
-    POSTS_DIR.mkdir(parents=True, exist_ok=True)  # 無ければ作成
-
+    POSTS_DIR.mkdir(parents=True, exist_ok=True)          # 無ければ作成
     client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
     today  = datetime.date.today().isoformat()
 
+    # 未生成のアイデアを 1 件だけ処理
     for idea in load_ideas():
         slug    = idea["slug"]
         md_path = POSTS_DIR / f"{slug}.md"
-        if md_path.exists():          # 既に生成済みなら skip
+        if md_path.exists():        # 既に生成済みなら次へ
             continue
 
         body = generate_article(client, idea)
@@ -66,6 +66,7 @@ def main() -> None:
         )
         md_path.write_text(frontmatter + body, encoding="utf-8")
         print(f"✅ generated {md_path.relative_to(BASE)}")
+        break                       # ★ 1 本生成したら終了
 
 if __name__ == "__main__":
     main()
