@@ -1,12 +1,151 @@
 [
   {
-    "slug": "ritual-daily-checkin",
-    "title": "1日3分 チームビルディング“腕チェックイン”のススメ",
-    "prompt": "ボンフィレットを活用して、朝礼でメンバーの状態を可視化する方法を紹介してください。"
+    "slug": "communication-active-listening",
+    "title": "アクティブリスニングでチームの誤解をゼロにする",
+    "prompt": "日常のミーティングでアクティブリスニングを導入し、メンバー同士の誤解や思い込みを減らす方法を提案してください。"
   },
   {
-    "slug": "vision-small-action",
-    "title": "ビジョンを“見える化”するミサンガ活用術",
-    "prompt": "企業ビジョンをボンフィレットに刻み、日常的に意識づけするストーリーを作成してください。"
-  }
-]
+    "slug": "communication-feedback-boost",
+    "title": "フィードバックを“贈り物”に変える3ステップ",
+    "prompt": "ネガティブに受け取られがちなフィードバックを、前向きな成長機会としてチーム文化に根づかせる施策を紹介してください。"
+  },
+  {
+    "slug": "communication-slack-ritual",
+    "title": "Slack朝のひと言ルールで情報共有ロスを防ぐ",
+    "prompt": "リモート環境での情報断絶を防ぐための“朝イチSlack Ritual”を設計し、実践例と効果を示してください。"
+  },
+  {
+    "slug": "communication-emoji-code",
+    "title": "絵文字プロトコルで意思決定を高速化せよ",
+    "prompt": "チャットでの意思決定を高速化する“絵文字プロトコル”の導入ステップと注意点をまとめてください。"
+  },
+  {
+    "slug": "communication-1on1-power",
+    "title": "1on1ミーティングを“雑談”から“学習の場”へ進化させる",
+    "prompt": "定例1on1を単なる進捗確認から、相互学習の場へ変える質問テンプレートを提案してください。"
+  },
+  {
+    "slug": "communication-storytelling",
+    "title": "ストーリーテリングでプロジェクトの想いを共有するコツ",
+    "prompt": "プロジェクト開始時にビジョンを物語として語り、メンバーの納得度を高めるシナリオ構築法を解説してください。"
+  },
+  {
+    "slug": "communication-praise-culture",
+    "title": "“称賛の文化”を根づかせるピアボーナス制度",
+    "prompt": "称賛と報酬を連動させるピアボーナス制度の設計例と導入効果、運用上の落とし穴を紹介してください。"
+  },
+  {
+    "slug": "communication-retrospective-hacks",
+    "title": "脱マンネリ！ レトロスペクティブ3つの新ネタ",
+    "prompt": "マンネリ化したスプリントレトロを活性化するアイスブレイク＆フォーマット例を3種類提案してください。"
+  },
+  {
+    "slug": "communication-meeting-free-day",
+    "title": "“ノーミーティングデー”の始め方と定着術",
+    "prompt": "会議漬けから抜け出すために、週1のノーミーティングデーを導入し定着させるステップを紹介してください。"
+  },
+  {
+    "slug": "communication-daily-digest",
+    "title": "Daily Digestメールで情報洪水をコントロール",
+    "prompt": "多すぎるチャット/メールを整理し、毎日1回のDigestにまとめる仕組みを提案してください。"
+  },
+  {
+    "slug": "communication-conflict-resolution",
+    "title": "チーム衝突を“学習機会”に変える対話設計",
+    "prompt": "意見衝突をポジティブな学習の場に転換するファシリテーションのコツを紹介してください。"
+  },
+  {
+    "slug": "communication-remote-lunch",
+    "title": "リモートチームの“ランチ雑談”を復活させる仕掛け",
+    "prompt": "オンラインでも偶発的雑談を生む“バーチャルランチ”の運用方法と盛り上げアイデアを提案してください。"
+  },
+  {
+    "slug": "communication-ask-me-anything",
+    "title": "AMAセッションでリーダーの透明性を高めよう",
+    "prompt": "Ask Me Anything（何でも聞いて）を定期開催し、心理的安全性を高める運営ノウハウをまとめてください。"
+  },
+  {
+    "slug": "communication-handbook",
+    "title": "社内ハンドブックを“Notion一元管理”する７つの鉄則",
+    "prompt": "散在するルールやナレッジをNotionに統合し、更新フローを自動化するステップを説明してください。"
+  },
+  {
+    "slug": "communication-async-video",
+    "title": "非同期動画で“会議レス”オンボーディング",
+    "prompt": "新人オンボーディングを非同期動画に置き換え、先輩の工数を90％削減した事例を紹介してください。"
+  },
+  {
+    "slug": "communication-question-channel",
+    "title": "“質問専用チャンネル”でサポート負荷を半減",
+    "prompt": "SlackにQ&A専用チャンネルを設け、回答をナレッジ化するワークフローを提案してください。"
+  },
+  {
+    "slug": "communication-burnout-signals",
+    "title": "バーンアウト兆候を“言葉のトーン”で検知する",
+    "prompt": "チャットメッセージのトーン分析でメンバーの疲労兆候を把握し、早期ケアにつなげる仕組みを説明してください。"
+  },
+  {
+    "slug": "communication-gpt-meeting-minutes",
+    "title": "GPT自動議事録で意思決定スピードを2倍に",
+    "prompt": "会議録をGPTで生成・要約し、Slackに自動投稿するフローを解説してください。"
+  },
+  {
+    "slug": "communication-peer-review-checklist",
+    "title": "“ピアレビュー・チェックリスト”で品質と学習を両立",
+    "prompt": "コードレビュー／ドキュメントレビュー時のチェックリスト文化を根づかせる方法を提案してください。"
+  },
+  {
+    "slug": "communication-weekly-demo-day",
+    "title": "週次デモデーで“価値提供サイクル”を可視化",
+    "prompt": "社内デモデーを運営し、価値提供と学習を加速するフォーマットを紹介してください。"
+  },
+  {
+    "slug": "communication-office-hours",
+    "title": "“Office Hours”制度でメンターアクセスを平等に",
+    "prompt": "専門家メンターの時間をオープンにし、誰でも相談できる制度設計を説明してください。"
+  },
+  {
+    "slug": "communication-lightning-talks",
+    "title": "ライトニングトーク文化で社内知見を爆速共有",
+    "prompt": "5分LTを月1開催し、ナレッジ共有と登壇スキル向上を両立させる仕組みを提案してください."
+  },
+  {
+    "slug": "communication-empathy-mapping",
+    "title": "エンパシーマップでユーザー理解をチーム全体に広げる",
+    "prompt": "プロダクトチーム全員が顧客視点を持つためのエンパシーマップWSを設計してください。"
+  },
+  {
+    "slug": "communication-persona-wall",
+    "title": "ペルソナウォールで“顧客像”を常に視界に入れる",
+    "prompt": "オフィス or デジタルボードにペルソナを貼り、意思決定を顧客軸でチェックする方法を紹介してください。"
+  },
+  {
+    "slug": "communication-radar-chart-checkin",
+    "title": "レーダーチャートチェックインで感情の凹凸を見える化",
+    "prompt": "メンバーの感情・コンディションを6軸レーダーで可視化し、チーム状態を共有する方法を提案してください。"
+  },
+  {
+    "slug": "momentum-start-small-sprint",
+    "title": "“小さく産んで早く回す”2週間スプリント術",
+    "prompt": "大規模プロジェクトをまず2週間MVPに落とし込み、成功体験を積み重ねる進行法を紹介してください。"
+  },
+  {
+    "slug": "momentum-visible-progress",
+    "title": "進捗を可視化する“カンバン+WIP制限”の威力",
+    "prompt": "WIP制限を導入してタスクの停滞を防ぎ、チームの流れを最大化する実践例を解説してください。"
+  },
+  {
+    "slug": "momentum-daily-standup-3q",
+    "title": "デイリースタンドアップを3つの質問だけで回す",
+    "prompt": "毎日15分以内で終わるスタンドアップを設計し、継続率を上げる工夫を提案してください。"
+  },
+  {
+    "slug": "momentum-celebrate-micro-win",
+    "title": "“マイクロ勝利”を祝うカルチャーで加速を生む",
+    "prompt": "小さな達成を可視化・共有し、成功ループを回す施策を紹介してください。"
+  },
+  {
+    "slug": "momentum-bot-nudge",
+    "title": "Slackボットの“ナッジ”で締切を守るチームへ",
+    "prompt": "リマインダーボットを活用して締切遵守率を上げた事例と設定ポイントを解説してください。"
+  },
