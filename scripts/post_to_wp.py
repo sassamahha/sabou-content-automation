@@ -28,7 +28,7 @@ CATEGORY_MAP = {
 TAG_IDS: list[int] = []     # 必要なら設定
 
 # ────────────────────────── アイキャッチ画像 ID プール
-MEDIA_IDS = [1942, 1943, 1944, 1945]  # ←自サイトのメディア ID に置換
+MEDIA_IDS = [1942, 1949, 1946, 1929]  # ←自サイトのメディア ID に置換
 POOL_FILE = Path("tmp/media_pool.json")
 
 
