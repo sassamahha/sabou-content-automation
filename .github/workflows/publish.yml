@@ -1,24 +1,39 @@
 name: publish_from_ideas
+
 on:
+  # 08:15 JST (= 23:15 UTC) に 1 日 1 回実行
   schedule:
-    - cron: '15 23 * * *'   # 08:15 JST (= 23:15 UTC)
+    - cron: '15 23 * * *'
+  # 手動トリガーも可能
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    # push するために write 権限を明示
+    permissions:
+      contents: write
+
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v5
-        with: {python-version: '3.11'}
-      - name: Install deps
-        run: pip install openai markdown
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          # openai v1 系 & markdown パーサ
+          pip install "openai>=1.3" markdown
+
       - name: Generate articles
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: python scripts/generate_from_ideas.py
-      - name: Commit & push
+        run: |
+          python scripts/generate_from_ideas.py
+
+      - name: Commit & push generated posts
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
