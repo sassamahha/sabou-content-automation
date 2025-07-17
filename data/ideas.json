@@ -123,9 +123,7 @@
     "slug": "communication-radar-chart-checkin",
     "title": "レーダーチャートチェックインで感情の凹凸を見える化",
     "prompt": "メンバーの感情・コンディションを6軸レーダーで可視化し、チーム状態を共有する方法を提案してください。"
-  }
-]
-[
+  },
   {
     "slug": "momentum-visible-progress",
     "title": "進捗を見える化するカンバン＋WIP制限",
