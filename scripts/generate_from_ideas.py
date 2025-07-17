@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-import json, os, datetime, pathlib, openai, markdown
+import json, os, datetime, pathlib
+from openai import OpenAI
+import markdown
 BASE = pathlib.Path(__file__).resolve().parents[1]
 POSTS_DIR = BASE / "posts" / "bonfillet"
 IDEA_FILE = BASE / "data" / "ideas.json"
 
 def main():
-    openai.api_key = os.environ["OPENAI_API_KEY"]
+    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
     ideas = json.loads(IDEA_FILE.read_text())
 
     for idea in ideas:
@@ -24,8 +26,8 @@ def main():
         )
         user_prompt = f"タイトル: {idea['title']}\nお題: {idea['prompt']}"
 
-        resp = openai.ChatCompletion.create(
-            model="gpt-4o-mini",
+        resp = client.chat.completions.create(
+           model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user",   "content": user_prompt}
