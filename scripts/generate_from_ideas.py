@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
-import json, os, datetime, pathlib
+import json, os, datetime, pathlib, random
 from openai import OpenAI
 
 # ────────────────── パス設定 ──────────────────
 BASE      = pathlib.Path(__file__).resolve().parent.parent
-POSTS_DIR = BASE / "posts" / "sabou"          # 出力先
+POSTS_DIR = BASE / "posts" / "sabou"
 IDEA_FILE = BASE / "data" / "ideas.json"
 
 # ───────────────── 共通関数 ──────────────────
 def load_ideas() -> list[dict]:
-    """ideas.json をロードして返す"""
     with IDEA_FILE.open(encoding="utf-8") as f:
         return json.load(f)
 
 def generate_article(client: OpenAI, idea: dict) -> str:
-    """OpenAI で本文を生成して返す"""
     system_prompt = (
         "あなたはチームマネジメントや育成に詳しい編集者です。\n"
         "以下のルールで、課題に共感しながら具体的な解決策を提案する記事を1200〜1500字で書いてください：\n"
@@ -42,31 +40,33 @@ def generate_article(client: OpenAI, idea: dict) -> str:
 
 # ───────────────── メイン処理 ─────────────────
 def main() -> None:
-    POSTS_DIR.mkdir(parents=True, exist_ok=True)          # 無ければ作成
+    POSTS_DIR.mkdir(parents=True, exist_ok=True)
     client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
     today  = datetime.date.today().isoformat()
 
-    # 未生成のアイデアを 1 件だけ処理
-    for idea in load_ideas():
-        slug    = idea["slug"]
-        md_path = POSTS_DIR / f"{slug}.md"
-        if md_path.exists():        # 既に生成済みなら次へ
-            continue
+    # ① 未生成アイデアを抽出 → ② 無作為シャッフル
+    ideas = load_ideas()
+    ungenerated = [i for i in ideas if not (POSTS_DIR / f"{i['slug']}.md").exists()]
+    if not ungenerated:
+        print("✅ すべての記事を生成済みです")
+        return
+    random.shuffle(ungenerated)        # 偏りを崩す
+    idea = ungenerated[0]              # 1 本だけ採用
 
-        body = generate_article(client, idea)
-
-        frontmatter = (
-            f"---\n"
-            f'title: "{idea["title"]}"\n'
-            f"date: {today}\n"
-            f"slug: {slug}\n"
-            f"tags: [sabou]\n"
-            f"lang: ja\n"
-            f"---\n\n"
-        )
-        md_path.write_text(frontmatter + body, encoding="utf-8")
-        print(f"✅ generated {md_path.relative_to(BASE)}")
-        break                       # ★ 1 本生成したら終了
+    # ③ 記事生成
+    body = generate_article(client, idea)
+    frontmatter = (
+        f"---\n"
+        f'title: "{idea["title"]}"\n'
+        f"date: {today}\n"
+        f"slug: {idea['slug']}\n"
+        f"tags: [sabou]\n"
+        f"lang: ja\n"
+        f"---\n\n"
+    )
+    md_path = POSTS_DIR / f"{idea['slug']}.md"
+    md_path.write_text(frontmatter + body, encoding="utf-8")
+    print(f"✅ generated {md_path.relative_to(BASE)}")
 
 if __name__ == "__main__":
     main()
