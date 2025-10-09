@@ -4,6 +4,4 @@ note:
 sources:
   - repo_dir: "content-repo"
     glob: "posts/sabou/*.md"
-    max_per_run: 1        
-    footer: |
-      ---
+    max_per_run: 1  
