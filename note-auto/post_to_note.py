@@ -152,26 +152,92 @@ def publish_flow(page):
     # 遷移安定待ち
     page.wait_for_load_state("networkidle")
 
-def create_post(page, author_id, title, body_md, footer_md, canonical_link=None, tags=None):
+
+# --- 見出し抽出 & 挿入ユーティリティ -----------------
+def _iter_blocks_for_note(md: str):
+    """
+    md を行ごとに走査して ('h2', text) or ('p', text) を返す。
+    # と ## はどちらも h2 として扱う。
+    """
+    lines = md.splitlines()
+    buf = []
+
+    def flush_para():
+        if buf:
+            yield ('p', '\n'.join(buf).strip())
+            buf.clear()
+
+    for line in lines:
+        m = re.match(r'^(#{1,2})\s+(.*)$', line.strip())
+        if m:
+            # 直前段落を出力
+            for b in flush_para(): 
+                yield b
+            yield ('h2', m.group(2).strip())
+        else:
+            buf.append(line)
+
+    for b in flush_para():
+        yield b
+
+
+def _insert_h2_block(page, text: str):
+    """
+    エディタで / → 大見出し を選び、見出しテキストを入力。
+    メニュー取得失敗時は段落として継続（落とさない）。
+    """
+    editor = page.locator('[contenteditable="true"]').first
+    editor.click()
+    try:
+        page.keyboard.press("/")
+        page.keyboard.insert_text("h2")
+        try:
+            page.get_by_role("menuitem", name=re.compile("大見出し")).first.click(timeout=1200)
+        except Exception:
+            page.locator("text=大見出し").first.click(timeout=1200)
+    except Exception:
+        # フォールバック：段落として入れる
+        _insert_paragraph(page, text)
+        return
+
+    page.keyboard.insert_text(text)
+    page.keyboard.press("Enter")
+    page.keyboard.press("Enter")
+
+
+def _insert_paragraph(page, text: str):
+    editor = page.locator('[contenteditable="true"]').first
+    editor.click()
+    if text:
+        page.keyboard.insert_text(text)
+    page.keyboard.press("Enter")
+    page.keyboard.press("Enter")
+
+# --- 投稿 -----------------
+def create_post(page, author_id, title, body_md, footer_md=None, canonical_link=None, tags=None):
     open_new_editor(page)
 
     # タイトル
     try:
-        # textarea or input 的に置かれていることがある
         title_box = page.locator("textarea[placeholder='記事タイトル'], [placeholder='記事タイトル']").first
         title_box.click()
     except Exception:
         pass
     page.keyboard.type(title)
 
-    # 本文（+フッター）。editor は contenteditable を1個で持つことが多い
+    # 本文: # / ## を「大見出し(h2)」として挿入、それ以外は段落
     editor = page.locator('[contenteditable="true"]').first
     editor.click()
-    page.keyboard.insert_text((body_md or "").strip())
-    if footer_md and footer_md.strip():
-        page.keyboard.insert_text("\n\n" + footer_md.strip() + "\n")
 
-    # 公開フロー
+    for kind, text in _iter_blocks_for_note(body_md or ""):
+        if kind == 'h2':
+            _insert_h2_block(page, text)
+        else:
+            _insert_paragraph(page, text)
+
+    # footer は入れない（要望どおり無視）
+
+    # 公開
     publish_flow(page)
 
 # ====== メイン ======
