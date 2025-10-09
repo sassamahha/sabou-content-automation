@@ -16,7 +16,7 @@ jobs:
         with:
           repository: sassamahha/sabou-content-automation
           path: content-repo
-          fetch-depth: 1
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
