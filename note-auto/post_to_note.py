@@ -1,4 +1,4 @@
-import os, json, time, tempfile, re, hashlib, glob, subprocess
+import os, json, time, tempfile, re, hashlib, glob, subprocess, random
 from pathlib import Path
 from html import unescape
 
@@ -141,17 +141,6 @@ def open_new_editor(page):
     if not ok:
         raise RuntimeError("エディタが開けませんでした（タイトル/本文エリア検出失敗）")
 
-def publish_flow(page):
-    """
-    右上の『公開に進む』→ publish 画面 → 『投稿する』まで。
-    """
-    page.get_by_role("button", name=re.compile("公開に進む")).click(timeout=10000)
-    page.wait_for_url("**/publish/**", timeout=60000)
-    # タグなどはスキップ
-    page.get_by_role("button", name=re.compile("投稿する")).click(timeout=10000)
-    # 遷移安定待ち
-    page.wait_for_load_state("networkidle")
-
 # ====== クリップボード貼り付け ======
 def paste_markdown(page, text: str):
     """
@@ -181,6 +170,80 @@ def git_last_commit_ts(repo_root: Path, file_path: Path) -> int:
     except Exception:
         return int(file_path.stat().st_mtime)
 
+# ====== カバー画像（サムネイル）任意アップロード ======
+IMG_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+
+def _resolve_repo_path(path_like: str) -> Path:
+    """
+    config の相対パスを リポジトリルート基準に解決。
+    note-auto/ から見て1つ上がリポジトリルートという前提。
+    """
+    p = Path(path_like)
+    if p.is_absolute():
+        return p
+    repo_root = (BASE / "..").resolve()
+    return (repo_root / p).resolve()
+
+def _pick_random_image(images_dir: Path) -> Path | None:
+    if not images_dir.exists():
+        return None
+    files = [p for p in images_dir.rglob("*") if p.is_file() and p.suffix.lower() in IMG_EXTS]
+    if not files:
+        return None
+    return random.choice(files)
+
+def _set_cover_image_any(page, img_path: Path) -> bool:
+    """
+    現在のページ（公開画面 or エディタのバナー）でカバー画像のアップロードポイントを探し、
+    file chooser で img_path をセット。成功したら True。
+    """
+    button_patterns = [
+        r"見出し画像", r"カバー画像", r"サムネイル", r"画像を選択", r"アップロード", r"ファイルを選択",
+    ]
+    for pat in button_patterns:
+        try:
+            with page.expect_event("filechooser", timeout=1200) as fc:
+                page.get_by_role("button", name=re.compile(pat)).first.click()
+            chooser = fc.value
+            chooser.set_files(str(img_path))
+            page.wait_for_timeout(800)
+            return True
+        except Exception:
+            pass
+
+    banner_patterns = [
+        r"見出し画像を設定してみませんか", r"見出し画像", r"カバー画像", r"サムネイル",
+    ]
+    for pat in banner_patterns:
+        try:
+            with page.expect_event("filechooser", timeout=1000) as fc:
+                page.get_by_text(re.compile(pat)).first.click()
+            chooser = fc.value
+            chooser.set_files(str(img_path))
+            page.wait_for_timeout(800)
+            return True
+        except Exception:
+            pass
+
+    return False
+
+def publish_flow(page, cover_path: Path | None = None):
+    """
+    右上の『公開に進む』→ publish 画面 → （任意でカバー画像）→ 『投稿する』
+    """
+    page.get_by_role("button", name=re.compile("公開に進む")).click(timeout=10000)
+    page.wait_for_url("**/publish/**", timeout=60000)
+
+    # 任意のカバー画像
+    if cover_path:
+        try:
+            _set_cover_image_any(page, cover_path)
+        except Exception:
+            pass  # 任意機能なので失敗は無視
+
+    page.get_by_role("button", name=re.compile("投稿する")).click(timeout=10000)
+    page.wait_for_load_state("networkidle")
+
 # --- 投稿 -----------------
 def create_post(page, author_id, title, body_md, footer_md=None, canonical_link=None, tags=None):
     open_new_editor(page)
@@ -198,10 +261,22 @@ def create_post(page, author_id, title, body_md, footer_md=None, canonical_link=
     editor.click()
     paste_markdown(page, (body_md or "").strip())
 
-    # footer は入れない
+    # カバー画像の選択（config に upload_cover/cover_images_dir がある場合のみ）
+    cover_path = None
+    try:
+        cfg = load_cfg()
+        want_cover = cfg.get("note", {}).get("upload_cover")
+        cover_dir = cfg.get("note", {}).get("cover_images_dir")
+        if want_cover and cover_dir:
+            resolved = _resolve_repo_path(cover_dir)
+            img = _pick_random_image(resolved)
+            if img:
+                cover_path = img
+    except Exception:
+        pass  # 任意機能なので握りつぶす
 
-    # 公開
-    publish_flow(page)
+    # 公開（カバー画像パスを渡す）
+    publish_flow(page, cover_path=cover_path)
 
 # ====== メイン ======
 def run_once():
