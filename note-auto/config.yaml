@@ -1,7 +1,7 @@
 note:
   author_id: "sasakiya_sabou"
   upload_cover: true
-  cover_images_dir: "content-repo/note-covers"
+  cover_images_dir: "note-auto/covers"
 
 sources:
   - repo_dir: "content-repo"
