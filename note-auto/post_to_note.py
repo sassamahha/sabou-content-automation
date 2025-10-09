@@ -227,22 +227,83 @@ def _set_cover_image_any(page, img_path: Path) -> bool:
 
     return False
 
-def publish_flow(page, cover_path: Path | None = None):
+def publish_flow(page):
     """
-    右上の『公開に進む』→ publish 画面 → （任意でカバー画像）→ 『投稿する』
+    右上の『公開に進む』→ publish 画面 → 『投稿する』までを堅く実行。
+    - カバー画像を設定している場合はアップロード完了を待つ
+    - 『投稿する』が有効化されるまで待機
+    - 公開後に『下書き』判定ならワンリトライ
     """
-    page.get_by_role("button", name=re.compile("公開に進む")).click(timeout=10000)
-    page.wait_for_url("**/publish/**", timeout=60000)
+    # 1) 公開に進む
+    page.get_by_role("button", name=re.compile("公開に進む|公開へ進む")).click(timeout=12000)
+    page.wait_for_url("**/publish/**", timeout=90000)
+    page.wait_for_load_state("domcontentloaded")
 
-    # 任意のカバー画像
-    if cover_path:
+    # 2) （あれば）カバー画像アップロードの完了を待つ
+    #   - プレビュー縮小画像 or 「画像を変更」/「削除」ボタンが出るまで待つ
+    #   - 出てこなければ 0.5s × 最大 40 回 (=20s) だけポーリング
+    for _ in range(40):
         try:
-            _set_cover_image_any(page, cover_path)
+            if page.locator("img").filter(has_text=re.compile("")).count() > 0:
+                break
+            if page.locator("text=画像を変更").count() > 0:
+                break
+            if page.locator("text=削除").count() > 0:
+                break
         except Exception:
-            pass  # 任意機能なので失敗は無視
+            pass
+        page.wait_for_timeout(500)
 
-    page.get_by_role("button", name=re.compile("投稿する")).click(timeout=10000)
+    # 3) 『投稿する』が有効になるのを待つ
+    post_btn = page.get_by_role("button", name=re.compile("^投稿する$"))
+    # disabled解除待ち（最大 90s）
+    for _ in range(90):
+        try:
+            if post_btn.is_enabled():
+                break
+        except Exception:
+            pass
+        page.wait_for_timeout(1000)
+
+    # 4) クリックして公開、画面遷移を待機
+    try:
+        with page.expect_navigation(wait_until="load", timeout=120000):
+            post_btn.click(timeout=5000)
+    except Exception:
+        # フォールバック（ナビが起きない UI でもとにかく押す）
+        post_btn.click()
+        page.wait_for_load_state("networkidle")
+
+    # 5) 公開できたかを判定。『これは公開前の下書きです。』があれば再試行
+    def is_draft():
+        try:
+            return page.locator("text=これは公開前の下書きです").count() > 0
+        except Exception:
+            return False
+
+    if is_draft():
+        # 再度『公開に進む』→『投稿する』
+        page.get_by_role("button", name=re.compile("公開に進む|公開へ進む")).click(timeout=12000)
+        page.wait_for_url("**/publish/**", timeout=90000)
+        page.wait_for_load_state("domcontentloaded")
+        post_btn = page.get_by_role("button", name=re.compile("^投稿する$"))
+        for _ in range(60):
+            try:
+                if post_btn.is_enabled():
+                    break
+            except Exception:
+                pass
+            page.wait_for_timeout(1000)
+        try:
+            with page.expect_navigation(wait_until="load", timeout=120000):
+                post_btn.click(timeout=5000)
+        except Exception:
+            post_btn.click()
+            page.wait_for_load_state("networkidle")
+
+    # 最後にネットワーク静止まで
     page.wait_for_load_state("networkidle")
+
 
 # --- 投稿 -----------------
 def create_post(page, author_id, title, body_md, footer_md=None, canonical_link=None, tags=None):
