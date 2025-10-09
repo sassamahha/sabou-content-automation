@@ -183,26 +183,49 @@ def _iter_blocks_for_note(md: str):
 
 def _insert_h2_block(page, text: str):
     """
-    エディタで / → 大見出し を選び、見出しテキストを入力。
-    メニュー取得失敗時は段落として継続（落とさない）。
+    スラッシュメニューをキーボードで操作して h2(大見出し) を挿入。
+    - "/" → メニュー表示 → ArrowDown×6 → Enter
+    - メニューが出ない場合は "/" を消して段落にフォールバック
     """
     editor = page.locator('[contenteditable="true"]').first
     editor.click()
+
+    # 直前段落とくっつかないように改行を入れる
+    page.keyboard.press("Enter")
+
+    # スラッシュメニューを開く
+    page.keyboard.press("/")
+    menu_opened = False
     try:
-        page.keyboard.press("/")
-        page.keyboard.insert_text("h2")
-        try:
-            page.get_by_role("menuitem", name=re.compile("大見出し")).first.click(timeout=1200)
-        except Exception:
-            page.locator("text=大見出し").first.click(timeout=1200)
+        # メニューの見出し「挿入」や項目の出現を待つ（短め）
+        page.locator("text=挿入").first.wait_for(timeout=800)
+        menu_opened = True
     except Exception:
-        # フォールバック：段落として入れる
+        try:
+            page.get_by_role("menuitem").first.wait_for(timeout=500)
+            menu_opened = True
+        except Exception:
+            menu_opened = False
+
+    if not menu_opened:
+        # "/" が本文に残ると困るので消す→通常段落にフォールバック
+        page.keyboard.press("Backspace")
         _insert_paragraph(page, text)
         return
 
+    # キー操作のみで「h2 大見出し」を選択（リスト7番目）
+    for _ in range(6):
+        page.keyboard.press("ArrowDown")
+        # 極端に重い環境のため、数十msだけ待つと安定することが多い
+        page.wait_for_timeout(40)
+
+    page.keyboard.press("Enter")
+
+    # 見出しテキストを入力して確定
     page.keyboard.insert_text(text)
-    page.keyboard.press("Enter")
-    page.keyboard.press("Enter")
+    page.keyboard.press("Enter")   # 次の段落へ移動
+    page.keyboard.press("Enter")   # 余白確保
+
 
 
 def _insert_paragraph(page, text: str):
