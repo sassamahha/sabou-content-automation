@@ -152,95 +152,22 @@ def publish_flow(page):
     # 遷移安定待ち
     page.wait_for_load_state("networkidle")
 
-
-# --- 見出し抽出 & 挿入ユーティリティ -----------------
-def _iter_blocks_for_note(md: str):
+# ====== 貼り付けユーティリティ ======
+def paste_markdown(page, text: str):
     """
-    md を行ごとに走査して ('h2', text) or ('p', text) を返す。
-    # と ## はどちらも h2 として扱う。
+    クリップボードに text を入れて Ctrl+V で貼り付け。
+    note 側が Markdown を解釈して見出し/リスト等を整形してくれる。
     """
-    lines = md.splitlines()
-    buf = []
-
-    def flush_para():
-        if buf:
-            yield ('p', '\n'.join(buf).strip())
-            buf.clear()
-
-    for line in lines:
-        m = re.match(r'^(#{1,2})\s+(.*)$', line.strip())
-        if m:
-            # 直前段落を出力
-            for b in flush_para(): 
-                yield b
-            yield ('h2', m.group(2).strip())
-        else:
-            buf.append(line)
-
-    for b in flush_para():
-        yield b
-
-
-def _insert_h2_block(page, text: str):
-    """
-    スラッシュメニューをキーボードで操作して h2(大見出し) を挿入。
-    - "/" → メニュー表示 → ArrowDown×6 → Enter
-    - メニューが出ない場合は "/" を消して段落にフォールバック
-    """
-    editor = page.locator('[contenteditable="true"]').first
-    editor.click()
-
-    # 直前段落とくっつかないように改行を入れる
-    page.keyboard.press("Enter")
-
-    # スラッシュメニューを開く
-    page.keyboard.press("/")
-    menu_opened = False
-    try:
-        # メニューの見出し「挿入」や項目の出現を待つ（短め）
-        page.locator("text=挿入").first.wait_for(timeout=800)
-        menu_opened = True
-    except Exception:
-        try:
-            page.get_by_role("menuitem").first.wait_for(timeout=500)
-            menu_opened = True
-        except Exception:
-            menu_opened = False
-
-    if not menu_opened:
-        # "/" が本文に残ると困るので消す→通常段落にフォールバック
-        page.keyboard.press("Backspace")
-        _insert_paragraph(page, text)
-        return
-
-    # キー操作のみで「h2 大見出し」を選択（リスト7番目）
-    for _ in range(6):
-        page.keyboard.press("ArrowDown")
-        # 極端に重い環境のため、数十msだけ待つと安定することが多い
-        page.wait_for_timeout(40)
-
-    page.keyboard.press("Enter")
-
-    # 見出しテキストを入力して確定
-    page.keyboard.insert_text(text)
-    page.keyboard.press("Enter")   # 次の段落へ移動
-    page.keyboard.press("Enter")   # 余白確保
-
-
-
-def _insert_paragraph(page, text: str):
-    editor = page.locator('[contenteditable="true"]').first
-    editor.click()
-    if text:
-        page.keyboard.insert_text(text)
-    page.keyboard.press("Enter")
-    page.keyboard.press("Enter")
+    # クリップボードへ書き込み
+    page.evaluate("async (t) => await navigator.clipboard.writeText(t)", text)
+    # Linux(GitHub Actions) は Ctrl+V
+    page.keyboard.press("Control+V")
 
 # --- 投稿 -----------------
 def create_post(page, author_id, title, body_md, footer_md=None, canonical_link=None, tags=None):
     open_new_editor(page)
 
-    # タイトル
+    # タイトルはタイプ
     try:
         title_box = page.locator("textarea[placeholder='記事タイトル'], [placeholder='記事タイトル']").first
         title_box.click()
@@ -248,17 +175,12 @@ def create_post(page, author_id, title, body_md, footer_md=None, canonical_link=
         pass
     page.keyboard.type(title)
 
-    # 本文: # / ## を「大見出し(h2)」として挿入、それ以外は段落
+    # 本文は“貼り付け”で一括投入（Markdown解釈をnoteに任せる）
     editor = page.locator('[contenteditable="true"]').first
     editor.click()
+    paste_markdown(page, (body_md or "").strip())
 
-    for kind, text in _iter_blocks_for_note(body_md or ""):
-        if kind == 'h2':
-            _insert_h2_block(page, text)
-        else:
-            _insert_paragraph(page, text)
-
-    # footer は入れない（要望どおり無視）
+    # footer は入れない
 
     # 公開
     publish_flow(page)
@@ -272,7 +194,8 @@ def run_once():
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        ctx = browser.new_context()
+        # クリップボード権限を付与
+        ctx = browser.new_context(permissions=["clipboard-read", "clipboard-write"])
         page = ctx.new_page()
         login(page, email, password)
 
@@ -282,30 +205,26 @@ def run_once():
             repo_dir = Path(src["repo_dir"]).resolve()
             pattern = src.get("glob", "**/*.md")
             max_per_run = int(src.get("max_per_run", 1))
-            footer_tpl = src.get("footer", "")
+            # 最新更新順に並べ替え（新しいもの優先）
+            files = sorted(repo_dir.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
 
-            files = sorted(repo_dir.glob(pattern))
             pushed = 0
-
             for f in files:
                 rel = str(f.resolve())
                 md_title, md_body, fm = md_body_from_file(f)
                 link = fm.get("canonical") or fm.get("link") or fm.get("url") or ""
-                body_for_hash = md_body
-                curr_sha = sha1_of_text(body_for_hash)
+                curr_sha = sha1_of_text(md_body)
 
                 prev_sha = posted_map.get(rel)
                 if prev_sha == curr_sha:
                     continue  # 変更なしはスキップ
-
-                footer = footer_tpl.format(title=md_title, link=link or "")
 
                 create_post(
                     page=page,
                     author_id=cfg["note"]["author_id"],
                     title=md_title,
                     body_md=md_body,
-                    footer_md=footer,
+                    footer_md=None,
                     canonical_link=link,
                     tags=fm.get("tags", []),
                 )
