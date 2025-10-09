@@ -1,4 +1,4 @@
-name: publish_from_ideas
+name: publish_from_ideas_to_WP
 
 on:
   # 08:15 JST (= 23:15 UTC) に 1 日 1 回実行
