@@ -66,14 +66,66 @@ def git_last_commit_ts(repo_root: Path, path: Path) -> int:
 
 # ====== noteログイン/投稿 ======
 def login(page, email, password):
-    # /login → 入力 → /notes（マイ記事一覧）まで到達
-    page.goto("https://note.com/login", timeout=60000, wait_until="domcontentloaded")
-    page.get_by_placeholder("メールアドレス または note ID").fill(email)
-    page.get_by_placeholder("パスワード").fill(password)
-    page.get_by_role("button", name="ログイン").click()
-    # ログイン後の到達先は安定しないので /notes へ誘導
+    # ログインページへ（描画が終わるまで待つ）
+    page.goto("https://note.com/login", timeout=90000, wait_until="domcontentloaded")
+    page.wait_for_load_state("domcontentloaded")
+
+    # 同意/ポップアップは潰す（あれば）
+    for txt in ["同意", "同意する", "OK", "Accept", "許可", "わかった"]:
+        try:
+            page.get_by_role("button", name=re.compile(txt)).click(timeout=800)
+        except Exception:
+            pass
+
+    # たまに「メールでログイン」ボタンを踏まないとフォームが出ないことがある
+    for txt in ["メールアドレスでログイン", "メールでログイン"]:
+        try:
+            page.get_by_role("button", name=re.compile(txt)).click(timeout=1200)
+            break
+        except Exception:
+            pass
+
+    # 入力欄はセレクタを緩めにして探索（いずれかがヒットすればOK）
+    email_sel = (
+        "input[type='email'], "
+        "input[name='email'], "
+        "input[autocomplete='username'], "
+        "input[placeholder*='メール'], "
+        "input[placeholder*='note ID'], "
+        "input[placeholder*='example.com']"
+    )
+    pass_sel = (
+        "input[type='password'], "
+        "input[name='password'], "
+        "input[autocomplete='current-password'], "
+        "input[placeholder*='パスワード']"
+    )
+
+    # まずは緩いセレクタで待機 → 入力
+    try:
+        page.wait_for_selector(f"{email_sel}", timeout=15000)
+        page.locator(email_sel).first.fill(email)
+    except Exception:
+        # 最後の手段：フォーム→最初のinput
+        form = page.locator("form").first
+        form.locator("input").nth(0).fill(email)
+
+    try:
+        page.wait_for_selector(f"{pass_sel}", timeout=8000)
+        page.locator(pass_sel).first.fill(password)
+    except Exception:
+        page.locator("input[type='password']").first.fill(password)
+
+    # 送信（ボタンが無ければ Enter）
+    try:
+        page.get_by_role("button", name=re.compile("ログイン|Sign in")).click(timeout=3000)
+    except Exception:
+        page.keyboard.press("Enter")
+
+    # 遷移が終わるまで待ち → 一覧へ誘導して安定化
     page.wait_for_load_state("networkidle")
-    page.goto("https://note.com/notes", timeout=60000, wait_until="domcontentloaded")
+    page.goto("https://note.com/notes", timeout=90000, wait_until="domcontentloaded")
+
 
 def open_new_editor(page):
     # /new を経由して /notes/<id>/edit/ に来る
