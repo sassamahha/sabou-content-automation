@@ -1,10 +1,10 @@
-import os, json, time, tempfile, re, hashlib, glob
+# note-auto/post_to_note.py
+import os, json, time, tempfile, re, hashlib, subprocess
 from pathlib import Path
 from html import unescape
 
 import yaml, requests
 from bs4 import BeautifulSoup
-from markdownify import markdownify as html2md
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
 # ====== 基本設定（CWD非依存）======
@@ -18,20 +18,20 @@ def load_cfg():
 def load_posted_map():
     if POSTED.exists():
         return json.loads(POSTED.read_text(encoding="utf-8"))
-    return {}  # { "absolute/or/resolved/path/to/post.md": "sha1" }
+    return {}  # { "<abs path to md>": "sha1" }
 
 def save_posted_map(d):
     POSTED.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
 
 # ====== MDユーティリティ ======
 def split_frontmatter(md_text: str):
-    """先頭の --- ... --- を frontmatter と本文に分離"""
+    """先頭の --- ... --- をfrontmatterと本文に分離"""
     if md_text.startswith('---'):
         parts = md_text.split('\n', 1)[1].split('\n---', 1)
         if len(parts) == 2:
             fm = yaml.safe_load(parts[0]) or {}
             body = parts[1]
-            if body.startswith('\n'):
+            if body.startswith('\n'):  # 先頭の改行を1つ食う
                 body = body[1:]
             return fm, body
     return {}, md_text
@@ -39,139 +39,81 @@ def split_frontmatter(md_text: str):
 def md_body_from_file(path: Path):
     raw = path.read_text(encoding="utf-8")
     fm, body = split_frontmatter(raw)
-    title = fm.get("title") or path.stem
-    # frontmatter に "slug","tags","lang","date","canonical" 等があれば後で利用
+    title = (fm.get("title") or path.stem).strip()
     return title, body, fm
 
-def sha1_of_text(s: str) -> str:
+def sha1_of_text(s: str)->str:
     return hashlib.sha1(s.encode("utf-8")).hexdigest()
 
-# ====== note ログイン/投稿 ======
+def git_last_commit_ts(repo_root: Path, path: Path) -> int:
+    """
+    ファイルの最終コミットUNIX時刻を取得（git が無理なら mtime）
+    """
+    try:
+        out = subprocess.check_output(
+            ["git", "log", "-1", "--format=%ct", "--", str(path)],
+            cwd=str(repo_root),
+            stderr=subprocess.DEVNULL,
+        ).decode().strip()
+        if out:
+            return int(out)
+    except Exception:
+        pass
+    try:
+        return int(path.stat().st_mtime)
+    except Exception:
+        return 0
+
+# ====== noteログイン/投稿 ======
 def login(page, email, password):
-    """
-    /login に行ってメール/パスを入れてログイン完了まで。
-    placeholder 固定に依存しない“頑丈版”。
-    """
+    # /login → 入力 → /notes（マイ記事一覧）まで到達
     page.goto("https://note.com/login", timeout=60000, wait_until="domcontentloaded")
-    page.wait_for_load_state("domcontentloaded")
-
-    # Cookie 同意など出ていれば潰す
-    for label in ["同意", "同意する", "OK", "Accept", "許可", "わかった"]:
-        try:
-            page.get_by_role("button", name=re.compile(label)).click(timeout=800)
-        except Exception:
-            pass
-
-    # 中継ボタンがあるパターンにも対応
-    for label in ["メールアドレスでログイン", "メールでログイン"]:
-        try:
-            page.get_by_role("button", name=re.compile(label)).click(timeout=1000)
-            break
-        except Exception:
-            pass
-
-    # フォーム入力欄を“柔らかい”セレクタで拾う
-    email_sel = "input[type='email'], input[name='email'], input[autocomplete='username'], input[placeholder*='メール'], input[placeholder*='note ID']"
-    pass_sel  = "input[type='password'], input[name='password'], input[autocomplete='current-password'], input[placeholder*='パスワード']"
-
-    try:
-        page.wait_for_selector(email_sel, timeout=12000)
-        page.locator(email_sel).first.fill(email)
-        page.locator(pass_sel).first.fill(password)
-    except Exception:
-        # 最悪 form から強引に
-        form = page.locator("form").first
-        form.locator("input").nth(0).fill(email)
-        form.locator("input[type='password']").first.fill(password)
-
-    # 送信（ナビが起きるなら待つ。起きなくても続行）
-    navigated = False
-    try:
-        with page.expect_navigation(wait_until="load", timeout=8000):
-            page.get_by_role("button", name=re.compile("ログイン|Sign in")).click(timeout=1500)
-        navigated = True
-    except Exception:
-        try:
-            with page.expect_navigation(wait_until="load", timeout=8000):
-                page.keyboard.press("Enter")
-            navigated = True
-        except Exception:
-            pass
-
-    # ネットワーク静止まで待機してから成功判定
+    page.get_by_placeholder("メールアドレス または note ID").fill(email)
+    page.get_by_placeholder("パスワード").fill(password)
+    page.get_by_role("button", name="ログイン").click()
+    # ログイン後の到達先は安定しないので /notes へ誘導
     page.wait_for_load_state("networkidle")
-
-    success_selectors = [
-        "a[href*='/home']",
-        "a[href*='/notifications']",
-        "a[href^='/me']",
-        "a[href*='/new']",
-        "img[alt*='アイコン'], img[alt*='プロフィール']",
-    ]
-    ok = False
-    for _ in range(24):  # 最大 ~12秒
-        try:
-            if "/home" in page.url or page.url.rstrip("/") == "https://note.com":
-                ok = True
-                break
-            if any(page.locator(sel).count() > 0 for sel in success_selectors):
-                ok = True
-                break
-        except Exception:
-            pass
-        page.wait_for_timeout(500)
-
-    if not ok:
-        raise RuntimeError(f"Login might have failed. current url={page.url}, navigated={navigated}")
+    page.goto("https://note.com/notes", timeout=60000, wait_until="domcontentloaded")
 
 def open_new_editor(page):
-    """
-    プロフ→投稿と同等。/new を経由して /notes/<id>/edit へ。
-    """
+    # /new を経由して /notes/<id>/edit/ に来る
     page.goto("https://editor.note.com/new/", timeout=60000)
     page.wait_for_url("**/edit/**", timeout=60000)
-    # エディタ準備（タイトル/本文エリアのどちらかを待つ）
-    ok = False
-    for _ in range(20):
-        if page.locator("textarea[placeholder='記事タイトル'], [placeholder='記事タイトル']").count() > 0:
-            ok = True; break
-        if page.locator('[contenteditable="true"]').count() > 0:
-            ok = True; break
-        page.wait_for_timeout(300)
-    if not ok:
-        raise RuntimeError("エディタが開けませんでした（タイトル/本文エリア検出失敗）")
+    page.wait_for_selector("text=記事タイトル", timeout=20000)
 
 def publish_flow(page):
-    """
-    右上の『公開に進む』→ publish 画面 → 『投稿する』まで。
-    """
+    # 右上「公開に進む」→ publish画面 → 「投稿する」
     page.get_by_role("button", name=re.compile("公開に進む")).click(timeout=10000)
     page.wait_for_url("**/publish/**", timeout=60000)
-    # タグなどはスキップ
     page.get_by_role("button", name=re.compile("投稿する")).click(timeout=10000)
-    # 遷移安定待ち
     page.wait_for_load_state("networkidle")
 
-def create_post(page, author_id, title, body_md, footer_md, canonical_link=None, tags=None):
+def paste_markdown(page, text: str):
+    """
+    クリップボード経由で貼り付け（note のMD→リッチ変換を発火させやすい）
+    """
+    # クリップボード権限を与える（context 側で付与済み想定だが保険でtry）
+    try:
+        page.context.grant_permissions(["clipboard-read", "clipboard-write"], origin="https://editor.note.com")
+    except Exception:
+        pass
+    # クリップボードに書いて貼り付け
+    page.evaluate("txt => navigator.clipboard.writeText(txt)", text)
+    page.keyboard.press("Control+V")  # UbuntuランナーなのでCtrlでOK
+
+def create_post(page, title, body_md):
     open_new_editor(page)
 
     # タイトル
-    try:
-        # textarea or input 的に置かれていることがある
-        title_box = page.locator("textarea[placeholder='記事タイトル'], [placeholder='記事タイトル']").first
-        title_box.click()
-    except Exception:
-        pass
+    page.get_by_placeholder("記事タイトル").click()
     page.keyboard.type(title)
 
-    # 本文（+フッター）。editor は contenteditable を1個で持つことが多い
+    # 本文：エディタにフォーカス→MDを貼り付け（note側で整形させる）
     editor = page.locator('[contenteditable="true"]').first
     editor.click()
-    page.keyboard.insert_text((body_md or "").strip())
-    if footer_md and footer_md.strip():
-        page.keyboard.insert_text("\n\n" + footer_md.strip() + "\n")
+    paste_markdown(page, body_md.strip() + "\n")
 
-    # 公開フロー
+    # 公開
     publish_flow(page)
 
 # ====== メイン ======
@@ -184,6 +126,12 @@ def run_once():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         ctx = browser.new_context()
+        # クリップボード権限
+        try:
+            ctx.grant_permissions(["clipboard-read", "clipboard-write"], origin="https://editor.note.com")
+        except Exception:
+            pass
+
         page = ctx.new_page()
         login(page, email, password)
 
@@ -193,39 +141,39 @@ def run_once():
             repo_dir = Path(src["repo_dir"]).resolve()
             pattern = src.get("glob", "**/*.md")
             max_per_run = int(src.get("max_per_run", 1))
-            footer_tpl = src.get("footer", "")
 
-            files = sorted(repo_dir.glob(pattern))
+            files = sorted(
+                repo_dir.glob(pattern),
+                key=lambda f: git_last_commit_ts(repo_dir, f),
+                reverse=True,
+            )
+
             pushed = 0
-
             for f in files:
-                rel = str(f.resolve())
+                # 1本だけ最新を優先したいときは、未投稿・差分ありの先頭でbreak
+                rel_abs = str(f.resolve())
                 md_title, md_body, fm = md_body_from_file(f)
-                link = fm.get("canonical") or fm.get("link") or fm.get("url") or ""
+
+                # 末尾の「出典」「カノニカル」等は不要、本文そのままを使う
                 body_for_hash = md_body
                 curr_sha = sha1_of_text(body_for_hash)
 
-                prev_sha = posted_map.get(rel)
+                prev_sha = posted_map.get(rel_abs)
                 if prev_sha == curr_sha:
-                    continue  # 変更なしはスキップ
+                    continue  # 変更なし
 
-                footer = footer_tpl.format(title=md_title, link=link or "")
-
+                # 投稿
                 create_post(
                     page=page,
-                    author_id=cfg["note"]["author_id"],
                     title=md_title,
                     body_md=md_body,
-                    footer_md=footer,
-                    canonical_link=link,
-                    tags=fm.get("tags", []),
                 )
 
-                posted_map[rel] = curr_sha
+                posted_map[rel_abs] = curr_sha
                 changed = True
                 pushed += 1
                 if pushed >= max_per_run:
-                    break
+                    break  # この source の分は終了
 
         if changed:
             save_posted_map(posted_map)
