@@ -1,4 +1,4 @@
-name: Post WP feed to note
+name: Post note
 
 on:
   workflow_dispatch: {}
