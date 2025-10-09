@@ -1,4 +1,4 @@
-import os, json, time, tempfile, re, hashlib, glob
+import os, json, time, tempfile, re, hashlib, glob, subprocess
 from pathlib import Path
 from html import unescape
 
@@ -152,16 +152,34 @@ def publish_flow(page):
     # 遷移安定待ち
     page.wait_for_load_state("networkidle")
 
-# ====== 貼り付けユーティリティ ======
+# ====== クリップボード貼り付け ======
 def paste_markdown(page, text: str):
     """
     クリップボードに text を入れて Ctrl+V で貼り付け。
     note 側が Markdown を解釈して見出し/リスト等を整形してくれる。
     """
-    # クリップボードへ書き込み
     page.evaluate("async (t) => await navigator.clipboard.writeText(t)", text)
-    # Linux(GitHub Actions) は Ctrl+V
     page.keyboard.press("Control+V")
+
+# ====== Git の最終コミット時間（Last commit date） ======
+def git_last_commit_ts(repo_root: Path, file_path: Path) -> int:
+    """
+    file_path を最後に更新した Git コミットの UNIX 時刻(%ct) を取得。
+    失敗したらファイルの mtime にフォールバック。
+    """
+    try:
+        rel = str(file_path.relative_to(repo_root))
+    except ValueError:
+        rel = str(file_path)
+
+    try:
+        out = subprocess.check_output(
+            ["git", "log", "-1", "--format=%ct", "--", rel],
+            cwd=str(repo_root),
+        ).decode("utf-8").strip()
+        return int(out)
+    except Exception:
+        return int(file_path.stat().st_mtime)
 
 # --- 投稿 -----------------
 def create_post(page, author_id, title, body_md, footer_md=None, canonical_link=None, tags=None):
@@ -205,8 +223,14 @@ def run_once():
             repo_dir = Path(src["repo_dir"]).resolve()
             pattern = src.get("glob", "**/*.md")
             max_per_run = int(src.get("max_per_run", 1))
-            # 最新更新順に並べ替え（新しいもの優先）
-            files = sorted(repo_dir.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
+
+            # ▼ Git の「Last commit date」降順で並べ替える（最新優先）
+            candidates = list(repo_dir.glob(pattern))
+            files = sorted(
+                candidates,
+                key=lambda f: git_last_commit_ts(repo_dir, f),
+                reverse=True,
+            )
 
             pushed = 0
             for f in files:
