@@ -2,15 +2,8 @@ note:
   author_id: "sasakiya_sabou"
 
 sources:
-  # コンテンツ用リポジトリを actions で ./content-repo にチェックアウトする前提
   - repo_dir: "content-repo"
     glob: "posts/sabou/*.md"
-    max_per_run: 1         # 1回で流す本数。様子見で1
+    max_per_run: 1        
     footer: |
       ---
-
-      ☝🏻 **出典 / カノニカル**  
-      [{title}]({link})
-
-      🏪 **ささきや商店（OEM）**  
-      https://sassamahha.me
