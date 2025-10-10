@@ -37,11 +37,29 @@ def split_frontmatter(md_text: str):
     return {}, md_text
 
 def md_body_from_file(path: Path):
+    """
+    ファイルから本文を読み、**本文の最初のH1をタイトルとして採用**。
+    H1が無ければ frontmatter.title → ファイル名 の順でフォールバック。
+    採用したH1は本文から除去（重複回避）。
+    """
     raw = path.read_text(encoding="utf-8")
     fm, body = split_frontmatter(raw)
-    title = fm.get("title") or path.stem
-    # frontmatter に "slug","tags","lang","date","canonical" 等があれば後で利用
+
+    # 先頭付近のH1を探す（行頭0〜3スペース + #1個 だけをH1とみなす）
+    # 例: "# タイトル" / " # タイトル"
+    m = re.search(r'(?m)^\s{0,3}#(?!#)\s+(.+?)\s*#*\s*$', body)
+    if m:
+        title = unescape(m.group(1)).strip()
+        # H1行を本文から削除（その前後の余分な改行も1個ぶん掃除）
+        start, end = m.span()
+        new_body = (body[:start] + body[end:]).lstrip('\n')
+        body = new_body
+    else:
+        title = fm.get("title") or path.stem
+
+    # frontmatterの他項目（tags, canonical 等）はそのまま返す
     return title, body, fm
+
 
 def sha1_of_text(s: str) -> str:
     return hashlib.sha1(s.encode("utf-8")).hexdigest()
@@ -227,36 +245,26 @@ def _set_cover_image_any(page, img_path: Path) -> bool:
 
     return False
 
-def publish_flow(page):
+# ==== 差し替え：publish_flow（後方互換：cover_pathは任意・未使用でもOK） ====
+def publish_flow(page, cover_path=None, *args, **kwargs):
     """
-    右上の『公開に進む』→ publish 画面 → 『投稿する』までを堅く実行。
-    - カバー画像を設定している場合はアップロード完了を待つ
-    - 『投稿する』が有効化されるまで待機
-    - 公開後に『下書き』判定ならワンリトライ
+    右上の『公開に進む』→ publish 画面 → 『投稿する』まで。
+    cover_path は与えられても与えられなくても動作する（後方互換）。
     """
     # 1) 公開に進む
     page.get_by_role("button", name=re.compile("公開に進む|公開へ進む")).click(timeout=12000)
     page.wait_for_url("**/publish/**", timeout=90000)
     page.wait_for_load_state("domcontentloaded")
 
-    # 2) （あれば）カバー画像アップロードの完了を待つ
-    #   - プレビュー縮小画像 or 「画像を変更」/「削除」ボタンが出るまで待つ
-    #   - 出てこなければ 0.5s × 最大 40 回 (=20s) だけポーリング
-    for _ in range(40):
+    # 2) （任意）カバー画像アップロード
+    if cover_path:
         try:
-            if page.locator("img").filter(has_text=re.compile("")).count() > 0:
-                break
-            if page.locator("text=画像を変更").count() > 0:
-                break
-            if page.locator("text=削除").count() > 0:
-                break
+            _set_cover_image_any(page, Path(cover_path))
         except Exception:
-            pass
-        page.wait_for_timeout(500)
+            pass  # オプションなので握りつぶす
 
-    # 3) 『投稿する』が有効になるのを待つ
+    # 3) 『投稿する』が有効化されるまで待つ
     post_btn = page.get_by_role("button", name=re.compile("^投稿する$"))
-    # disabled解除待ち（最大 90s）
     for _ in range(90):
         try:
             if post_btn.is_enabled():
@@ -265,24 +273,20 @@ def publish_flow(page):
             pass
         page.wait_for_timeout(1000)
 
-    # 4) クリックして公開、画面遷移を待機
+    # 4) 投稿実行
     try:
         with page.expect_navigation(wait_until="load", timeout=120000):
             post_btn.click(timeout=5000)
     except Exception:
-        # フォールバック（ナビが起きない UI でもとにかく押す）
         post_btn.click()
         page.wait_for_load_state("networkidle")
 
-    # 5) 公開できたかを判定。『これは公開前の下書きです。』があれば再試行
-    def is_draft():
-        try:
-            return page.locator("text=これは公開前の下書きです").count() > 0
-        except Exception:
-            return False
-
-    if is_draft():
-        # 再度『公開に進む』→『投稿する』
+    # 5) 下書きだったらワンリトライ
+    try:
+        is_draft = page.locator("text=これは公開前の下書きです").count() > 0
+    except Exception:
+        is_draft = False
+    if is_draft:
         page.get_by_role("button", name=re.compile("公開に進む|公開へ進む")).click(timeout=12000)
         page.wait_for_url("**/publish/**", timeout=90000)
         page.wait_for_load_state("domcontentloaded")
@@ -301,8 +305,8 @@ def publish_flow(page):
             post_btn.click()
             page.wait_for_load_state("networkidle")
 
-    # 最後にネットワーク静止まで
     page.wait_for_load_state("networkidle")
+
 
 
 # --- 投稿 -----------------
