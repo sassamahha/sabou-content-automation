@@ -246,44 +246,44 @@ def _set_cover_image_any(page, img_path: Path) -> bool:
     return False
 
 # ==== 差し替え：publish_flow（後方互換：cover_pathは任意・未使用でもOK） ====
-def publish_flow(page):
+def publish_flow(page, cover_path: Path | str | None = None):
     """
-    右上の『公開に進む』→ publish 画面 → 『投稿』確定までを頑丈に。
-    - 文言ゆれ（投稿する/公開する/投稿を予約）に対応
-    - ボタンが offscreen/disabled の間は待機
-    - 画面外ならスクロール → JS クリックでフォールバック
-    - たまに出るモーダル/トグルも軽く処理
+    右上の『公開に進む』→ publish 画面 → 『投稿』確定まで。
+    cover_path が渡されていれば publish 画面でサムネイル画像を設定する。
     """
     # 1) 公開に進む
     page.get_by_role("button", name=re.compile("公開に進む")).click(timeout=15000)
     page.wait_for_url("**/publish/**", timeout=60000)
     page.wait_for_load_state("networkidle")
 
-    # 2) ありがちな妨げ要素を除去/調整（失敗しても続行）
-    for sel in [
-        "button:has-text('OK')",
-        "button:has-text('閉じる')",
-        "button:has-text('スキップ')",
-        "button:has-text('わかった')",
-    ]:
+    # 2) 妨げ要素の掃除（失敗しても無視）
+    for sel in ["button:has-text('OK')", "button:has-text('閉じる')",
+                "button:has-text('スキップ')", "button:has-text('わかった')"]:
         try:
             page.locator(sel).first.click(timeout=800)
         except Exception:
             pass
 
-    # 「無料」選択が外れているケースに備えてタップ（なくても無視）
+    # 「無料」チェックが外れていたら入れておく（無ければ無視）
     try:
         page.locator("label:has-text('無料')").first.click(timeout=800)
     except Exception:
         pass
 
-    # 3) 投稿ボタンを取得（文言ゆれに対応）
-    post_btn = page.get_by_role(
-        "button",
-        name=re.compile(r"(投稿する|公開する|投稿を予約)"),
-    ).first
+    # 2.5) カバー画像（任意）
+    if cover_path:
+        try:
+            cp = Path(cover_path)
+            _set_cover_image_any(page, cp)
+        except Exception:
+            # 任意機能なので失敗しても続行
+            pass
 
-    # 画面下部までスクロールしてボタンを可視化
+    # 3) 投稿ボタン（文言ゆれ対応）
+    post_btn = page.get_by_role("button",
+        name=re.compile(r"(投稿する|公開する|投稿を予約)")).first
+
+    # 画面下部までスクロールして可視化
     try:
         page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
     except Exception:
@@ -292,13 +292,11 @@ def publish_flow(page):
     # 表示＆活性を待つ
     post_btn.wait_for(state="visible", timeout=20000)
     try:
-        # disabled が外れるのを待つ
         page.wait_for_function("el => !el.disabled", arg=post_btn, timeout=15000)
     except Exception:
-        # UI ラグで取れない場合もあるので続行
         pass
 
-    # 4) クリック（通常 → フォールバックの順）
+    # クリック（通常 → フォールバック）
     try:
         post_btn.click(timeout=15000)
     except Exception:
@@ -308,16 +306,14 @@ def publish_flow(page):
                 handle.scroll_into_view_if_needed(timeout=2000)
                 page.evaluate("(el)=>el.click()", handle)
         except Exception:
-            # 最後の最後にキーボードで確定（フォーカスがある場合のみ効く）
             try:
                 post_btn.focus()
                 page.keyboard.press("Enter")
             except Exception:
                 pass
 
-    # 5) 遷移完了
+    # 4) 遷移完了待ち
     page.wait_for_load_state("networkidle")
-    # publish→記事ページ（/notes… or /@user…）へ抜けるまで少し待つ
     for _ in range(20):
         if "/publish" not in page.url:
             break
