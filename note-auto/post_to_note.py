@@ -246,66 +246,82 @@ def _set_cover_image_any(page, img_path: Path) -> bool:
     return False
 
 # ==== 差し替え：publish_flow（後方互換：cover_pathは任意・未使用でもOK） ====
-def publish_flow(page, cover_path=None, *args, **kwargs):
+def publish_flow(page):
     """
-    右上の『公開に進む』→ publish 画面 → 『投稿する』まで。
-    cover_path は与えられても与えられなくても動作する（後方互換）。
+    右上の『公開に進む』→ publish 画面 → 『投稿』確定までを頑丈に。
+    - 文言ゆれ（投稿する/公開する/投稿を予約）に対応
+    - ボタンが offscreen/disabled の間は待機
+    - 画面外ならスクロール → JS クリックでフォールバック
+    - たまに出るモーダル/トグルも軽く処理
     """
     # 1) 公開に進む
-    page.get_by_role("button", name=re.compile("公開に進む|公開へ進む")).click(timeout=12000)
-    page.wait_for_url("**/publish/**", timeout=90000)
-    page.wait_for_load_state("domcontentloaded")
+    page.get_by_role("button", name=re.compile("公開に進む")).click(timeout=15000)
+    page.wait_for_url("**/publish/**", timeout=60000)
+    page.wait_for_load_state("networkidle")
 
-    # 2) （任意）カバー画像アップロード
-    if cover_path:
+    # 2) ありがちな妨げ要素を除去/調整（失敗しても続行）
+    for sel in [
+        "button:has-text('OK')",
+        "button:has-text('閉じる')",
+        "button:has-text('スキップ')",
+        "button:has-text('わかった')",
+    ]:
         try:
-            _set_cover_image_any(page, Path(cover_path))
-        except Exception:
-            pass  # オプションなので握りつぶす
-
-    # 3) 『投稿する』が有効化されるまで待つ
-    post_btn = page.get_by_role("button", name=re.compile("^投稿する$"))
-    for _ in range(90):
-        try:
-            if post_btn.is_enabled():
-                break
+            page.locator(sel).first.click(timeout=800)
         except Exception:
             pass
-        page.wait_for_timeout(1000)
 
-    # 4) 投稿実行
+    # 「無料」選択が外れているケースに備えてタップ（なくても無視）
     try:
-        with page.expect_navigation(wait_until="load", timeout=120000):
-            post_btn.click(timeout=5000)
+        page.locator("label:has-text('無料')").first.click(timeout=800)
     except Exception:
-        post_btn.click()
-        page.wait_for_load_state("networkidle")
+        pass
 
-    # 5) 下書きだったらワンリトライ
+    # 3) 投稿ボタンを取得（文言ゆれに対応）
+    post_btn = page.get_by_role(
+        "button",
+        name=re.compile(r"(投稿する|公開する|投稿を予約)"),
+    ).first
+
+    # 画面下部までスクロールしてボタンを可視化
     try:
-        is_draft = page.locator("text=これは公開前の下書きです").count() > 0
+        page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
     except Exception:
-        is_draft = False
-    if is_draft:
-        page.get_by_role("button", name=re.compile("公開に進む|公開へ進む")).click(timeout=12000)
-        page.wait_for_url("**/publish/**", timeout=90000)
-        page.wait_for_load_state("domcontentloaded")
-        post_btn = page.get_by_role("button", name=re.compile("^投稿する$"))
-        for _ in range(60):
+        pass
+
+    # 表示＆活性を待つ
+    post_btn.wait_for(state="visible", timeout=20000)
+    try:
+        # disabled が外れるのを待つ
+        page.wait_for_function("el => !el.disabled", arg=post_btn, timeout=15000)
+    except Exception:
+        # UI ラグで取れない場合もあるので続行
+        pass
+
+    # 4) クリック（通常 → フォールバックの順）
+    try:
+        post_btn.click(timeout=15000)
+    except Exception:
+        try:
+            handle = post_btn.element_handle()
+            if handle:
+                handle.scroll_into_view_if_needed(timeout=2000)
+                page.evaluate("(el)=>el.click()", handle)
+        except Exception:
+            # 最後の最後にキーボードで確定（フォーカスがある場合のみ効く）
             try:
-                if post_btn.is_enabled():
-                    break
+                post_btn.focus()
+                page.keyboard.press("Enter")
             except Exception:
                 pass
-            page.wait_for_timeout(1000)
-        try:
-            with page.expect_navigation(wait_until="load", timeout=120000):
-                post_btn.click(timeout=5000)
-        except Exception:
-            post_btn.click()
-            page.wait_for_load_state("networkidle")
 
+    # 5) 遷移完了
     page.wait_for_load_state("networkidle")
+    # publish→記事ページ（/notes… or /@user…）へ抜けるまで少し待つ
+    for _ in range(20):
+        if "/publish" not in page.url:
+            break
+        page.wait_for_timeout(500)
 
 
 
