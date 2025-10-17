@@ -3,12 +3,15 @@ name: Post note
 on:
   workflow_dispatch: {}
   schedule:
-    - cron: "0 3 * * *"   # 毎日12:00 JST
+    - cron: "0 3 * * *"   # 毎日12:00 JST (UTC 03:00)
+
+permissions:
+  contents: read
 
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 12        # ← 必ず吊り切る
+    timeout-minutes: 12
     concurrency:
       group: note-post
       cancel-in-progress: false
@@ -22,17 +25,27 @@ jobs:
           repository: sassamahha/sabou-content-automation
           path: content-repo
           fetch-depth: 0
+          # private でコケる場合は下を使う:
+          # token: ${{ secrets.GH_TOKEN }}   # repo 権限のPATを用意
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install deps
+      - name: Install deps (Python + Playwright 本体/依存)
         run: |
+          python -m pip install -U pip
           python -m pip install -r note-auto/requirements.txt
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
 
-      # ← Playwright公式アクションでChromium依存/Xvfbを面倒見てもらう
-      - uses: microsoft/playwright-github-action@v1
+      - name: Sanity check (import playwright)
+        run: |
+          python - <<'PY'
+          import sys
+          from playwright.sync_api import sync_playwright
+          print("Playwright import OK, Python", sys.version)
+          PY
 
       - name: Debug — show files
         run: |
@@ -43,7 +56,6 @@ jobs:
           echo "--- content-repo ---"
           ls -la content-repo/posts/sabou | head -n 50 || true
 
-      # （任意）ログイン状態の再利用：Secretsに NOTE_STATE_B64 を入れている場合だけ復元
       - name: Restore storage state (optional)
         if: ${{ secrets.NOTE_STATE_B64 != '' }}
         run: |
@@ -54,12 +66,11 @@ jobs:
         env:
           NOTE_EMAIL: ${{ secrets.NOTE_EMAIL }}
           NOTE_PASSWORD: ${{ secrets.NOTE_PASSWORD }}
-          DEBUG: pw:api                   # ← Playwrightの詳細ログ
+          DEBUG: pw:api
           PLAYWRIGHT_BROWSERS_PATH: 0
         run: |
           python note-auto/post_to_note.py
 
-      # 落ちたら証拠を必ず回収
       - name: Upload artifacts (screenshots/traces)
         if: always()
         uses: actions/upload-artifact@v4
