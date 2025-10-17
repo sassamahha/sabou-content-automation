@@ -1,3 +1,5 @@
+# note-auto/post_to_note.py
+
 import os, json, time, tempfile, re, hashlib, glob, subprocess, random
 from pathlib import Path
 from html import unescape
@@ -46,18 +48,15 @@ def md_body_from_file(path: Path):
     fm, body = split_frontmatter(raw)
 
     # 先頭付近のH1を探す（行頭0〜3スペース + #1個 だけをH1とみなす）
-    # 例: "# タイトル" / " # タイトル"
     m = re.search(r'(?m)^\s{0,3}#(?!#)\s+(.+?)\s*#*\s*$', body)
     if m:
         title = unescape(m.group(1)).strip()
-        # H1行を本文から削除（その前後の余分な改行も1個ぶん掃除）
         start, end = m.span()
         new_body = (body[:start] + body[end:]).lstrip('\n')
         body = new_body
     else:
         title = fm.get("title") or path.stem
 
-    # frontmatterの他項目（tags, canonical 等）はそのまま返す
     return title, body, fm
 
 
@@ -117,7 +116,10 @@ def login(page, email, password):
             pass
 
     # ネットワーク静止まで待機してから成功判定
-    page.wait_for_load_state("networkidle")
+    try:
+        page.wait_for_load_state("networkidle")
+    except Exception:
+        pass
 
     success_selectors = [
         "a[href*='/home']",
@@ -142,22 +144,47 @@ def login(page, email, password):
     if not ok:
         raise RuntimeError(f"Login might have failed. current url={page.url}, navigated={navigated}")
 
+    # サブドメイン跨ぎのCookie問題を避けるために一度ホームへ
+    try:
+        page.goto("https://note.com", timeout=30000, wait_until="domcontentloaded")
+    except Exception:
+        pass
+
+
+# === 置き換え：open_new_editor =========================
 def open_new_editor(page):
     """
-    プロフ→投稿と同等。/new を経由して /notes/<id>/edit へ。
+    エディタを開く。URL形状(/new or /edit)に依存せず、
+    タイトル欄 or 本文エリア(contenteditable)の出現で準備完了と判断する。
     """
-    page.goto("https://editor.note.com/new/", timeout=60000)
-    page.wait_for_url("**/edit/**", timeout=60000)
-    # エディタ準備（タイトル/本文エリアのどちらかを待つ）
-    ok = False
-    for _ in range(20):
-        if page.locator("textarea[placeholder='記事タイトル'], [placeholder='記事タイトル']").count() > 0:
-            ok = True; break
-        if page.locator('[contenteditable="true"]').count() > 0:
-            ok = True; break
-        page.wait_for_timeout(300)
-    if not ok:
-        raise RuntimeError("エディタが開けませんでした（タイトル/本文エリア検出失敗）")
+    candidates = [
+        "https://editor.note.com/new",
+        "https://editor.note.com/new/",
+        "https://note.com/new",
+        "https://note.com/notes/new",
+    ]
+    title_sel = "textarea[placeholder*='記事タイトル'], [placeholder*='記事タイトル']"
+    body_sel  = "[contenteditable='true']"
+
+    for url in candidates:
+        try:
+            page.goto(url, timeout=60000, wait_until="domcontentloaded")
+            try:
+                page.wait_for_load_state("networkidle", timeout=15000)
+            except Exception:
+                pass
+
+            for _ in range(40):  # 最大 ~12秒
+                if page.locator(title_sel).count() > 0:
+                    return
+                if page.locator(body_sel).count() > 0:
+                    return
+                page.wait_for_timeout(300)
+        except Exception:
+            continue
+
+    raise RuntimeError("エディタが開けませんでした（URL遷移ではなくUIの出現待ちにしても失敗）")
+
 
 # ====== クリップボード貼り付け ======
 def paste_markdown(page, text: str):
@@ -254,7 +281,10 @@ def publish_flow(page, cover_path: Path | str | None = None):
     # 1) 公開に進む
     page.get_by_role("button", name=re.compile("公開に進む")).click(timeout=15000)
     page.wait_for_url("**/publish/**", timeout=60000)
-    page.wait_for_load_state("networkidle")
+    try:
+        page.wait_for_load_state("networkidle")
+    except Exception:
+        pass
 
     # 2) 妨げ要素の掃除（失敗しても無視）
     for sel in ["button:has-text('OK')", "button:has-text('閉じる')",
@@ -276,8 +306,7 @@ def publish_flow(page, cover_path: Path | str | None = None):
             cp = Path(cover_path)
             _set_cover_image_any(page, cp)
         except Exception:
-            # 任意機能なので失敗しても続行
-            pass
+            pass  # 任意機能なので握りつぶす
 
     # 3) 投稿ボタン（文言ゆれ対応）
     post_btn = page.get_by_role("button",
@@ -313,7 +342,10 @@ def publish_flow(page, cover_path: Path | str | None = None):
                 pass
 
     # 4) 遷移完了待ち
-    page.wait_for_load_state("networkidle")
+    try:
+        page.wait_for_load_state("networkidle")
+    except Exception:
+        pass
     for _ in range(20):
         if "/publish" not in page.url:
             break
@@ -323,6 +355,12 @@ def publish_flow(page, cover_path: Path | str | None = None):
 
 # --- 投稿 -----------------
 def create_post(page, author_id, title, body_md, footer_md=None, canonical_link=None, tags=None):
+    # ホームを踏んでからエディタへ（サブドメインCookie対策）
+    try:
+        page.goto("https://note.com", timeout=30000, wait_until="domcontentloaded")
+    except Exception:
+        pass
+
     open_new_editor(page)
 
     # タイトルはタイプ
