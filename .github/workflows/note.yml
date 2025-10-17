@@ -3,7 +3,7 @@ name: Post note
 on:
   workflow_dispatch: {}
   schedule:
-    - cron: "0 3 * * *"   # 毎日12:00 JST (UTC 03:00)
+    - cron: "0 3 * * *"   # 毎日12:00 JST (UTC)
 
 permissions:
   contents: read
@@ -12,6 +12,8 @@ jobs:
   run:
     runs-on: ubuntu-latest
     timeout-minutes: 12
+    env:
+      NOTE_STATE_B64: ${{ secrets.NOTE_STATE_B64 }}   # ← if で使うためにenvへ
     concurrency:
       group: note-post
       cancel-in-progress: false
@@ -25,27 +27,19 @@ jobs:
           repository: sassamahha/sabou-content-automation
           path: content-repo
           fetch-depth: 0
-          # private でコケる場合は下を使う:
-          # token: ${{ secrets.GH_TOKEN }}   # repo 権限のPATを用意
+          # private で落ちる場合:
+          # token: ${{ secrets.GH_TOKEN }}
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install deps (Python + Playwright 本体/依存)
+      - name: Install deps (Python + Playwright)
         run: |
           python -m pip install -U pip
           python -m pip install -r note-auto/requirements.txt
           python -m pip install playwright
           python -m playwright install --with-deps chromium
-
-      - name: Sanity check (import playwright)
-        run: |
-          python - <<'PY'
-          import sys
-          from playwright.sync_api import sync_playwright
-          print("Playwright import OK, Python", sys.version)
-          PY
 
       - name: Debug — show files
         run: |
@@ -57,10 +51,10 @@ jobs:
           ls -la content-repo/posts/sabou | head -n 50 || true
 
       - name: Restore storage state (optional)
-        if: ${{ secrets.NOTE_STATE_B64 != '' }}
+        if: ${{ env.NOTE_STATE_B64 != '' }}
         run: |
           mkdir -p note-auto
-          echo "${{ secrets.NOTE_STATE_B64 }}" | base64 -d > note-auto/state.json
+          echo "${{ env.NOTE_STATE_B64 }}" | base64 -d > note-auto/state.json
 
       - name: Post to note
         env:
