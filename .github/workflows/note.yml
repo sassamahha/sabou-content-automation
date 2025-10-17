@@ -8,6 +8,11 @@ on:
 jobs:
   run:
     runs-on: ubuntu-latest
+    timeout-minutes: 12        # ← 必ず吊り切る
+    concurrency:
+      group: note-post
+      cancel-in-progress: false
+
     steps:
       - uses: actions/checkout@v4
 
@@ -22,26 +27,46 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Install deps
+        run: |
+          python -m pip install -r note-auto/requirements.txt
+
+      # ← Playwright公式アクションでChromium依存/Xvfbを面倒見てもらう
+      - uses: microsoft/playwright-github-action@v1
+
       - name: Debug — show files
         run: |
           pwd
           ls -la
           echo "--- note-auto ---"
-          ls -la note-auto
+          ls -la note-auto || true
           echo "--- content-repo ---"
-          ls -la content-repo/posts/sabou | head -n 50
+          ls -la content-repo/posts/sabou | head -n 50 || true
 
-      - name: Install deps
+      # （任意）ログイン状態の再利用：Secretsに NOTE_STATE_B64 を入れている場合だけ復元
+      - name: Restore storage state (optional)
+        if: ${{ secrets.NOTE_STATE_B64 != '' }}
         run: |
-          python -m pip install -r note-auto/requirements.txt
-          python -m playwright install --with-deps chromium
+          mkdir -p note-auto
+          echo "${{ secrets.NOTE_STATE_B64 }}" | base64 -d > note-auto/state.json
 
       - name: Post to note
         env:
           NOTE_EMAIL: ${{ secrets.NOTE_EMAIL }}
           NOTE_PASSWORD: ${{ secrets.NOTE_PASSWORD }}
-        run: python note-auto/post_to_note.py
+          DEBUG: pw:api                   # ← Playwrightの詳細ログ
+          PLAYWRIGHT_BROWSERS_PATH: 0
+        run: |
+          python note-auto/post_to_note.py
 
-    concurrency:
-      group: note-post
-      cancel-in-progress: false
+      # 落ちたら証拠を必ず回収
+      - name: Upload artifacts (screenshots/traces)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            note-auto/artifacts/**
+            note-auto/screenshots/**
+            note-auto/traces/**
+          if-no-files-found: ignore
