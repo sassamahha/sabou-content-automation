@@ -1,15 +1,14 @@
 # note-auto/post_to_note.py
 
-import os, json, time, tempfile, re, hashlib, glob, subprocess, random
+import os, json, re, hashlib, subprocess, random
 from pathlib import Path
 from html import unescape
+from typing import Optional
 
-import yaml, requests
-from bs4 import BeautifulSoup
-from markdownify import markdownify as html2md
+import yaml
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
-# ====== 基本設定（CWD非依存）======
+# ====== 基本設定 ======
 BASE = Path(__file__).parent.resolve()
 POSTED = BASE / "posted.json"
 
@@ -20,14 +19,13 @@ def load_cfg():
 def load_posted_map():
     if POSTED.exists():
         return json.loads(POSTED.read_text(encoding="utf-8"))
-    return {}  # { "absolute/or/resolved/path/to/post.md": "sha1" }
+    return {}
 
 def save_posted_map(d):
     POSTED.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
 
 # ====== MDユーティリティ ======
 def split_frontmatter(md_text: str):
-    """先頭の --- ... --- を frontmatter と本文に分離"""
     if md_text.startswith('---'):
         parts = md_text.split('\n', 1)[1].split('\n---', 1)
         if len(parts) == 2:
@@ -39,173 +37,29 @@ def split_frontmatter(md_text: str):
     return {}, md_text
 
 def md_body_from_file(path: Path):
-    """
-    ファイルから本文を読み、**本文の最初のH1をタイトルとして採用**。
-    H1が無ければ frontmatter.title → ファイル名 の順でフォールバック。
-    採用したH1は本文から除去（重複回避）。
-    """
     raw = path.read_text(encoding="utf-8")
     fm, body = split_frontmatter(raw)
 
-    # 先頭付近のH1を探す（行頭0〜3スペース + #1個 だけをH1とみなす）
+    # 行頭0〜3スペース + #1個をH1とする
     m = re.search(r'(?m)^\s{0,3}#(?!#)\s+(.+?)\s*#*\s*$', body)
     if m:
         title = unescape(m.group(1)).strip()
         start, end = m.span()
-        new_body = (body[:start] + body[end:]).lstrip('\n')
-        body = new_body
+        body = (body[:start] + body[end:]).lstrip('\n')
     else:
         title = fm.get("title") or path.stem
 
     return title, body, fm
 
-
 def sha1_of_text(s: str) -> str:
     return hashlib.sha1(s.encode("utf-8")).hexdigest()
 
-# ====== note ログイン/投稿 ======
-def login(page, email, password):
-    """
-    /login に行ってメール/パスを入れてログイン完了まで。
-    placeholder 固定に依存しない“頑丈版”。
-    """
-    page.goto("https://note.com/login", timeout=60000, wait_until="domcontentloaded")
-    page.wait_for_load_state("domcontentloaded")
-
-    # Cookie 同意など出ていれば潰す
-    for label in ["同意", "同意する", "OK", "Accept", "許可", "わかった"]:
-        try:
-            page.get_by_role("button", name=re.compile(label)).click(timeout=800)
-        except Exception:
-            pass
-
-    # 中継ボタンがあるパターンにも対応
-    for label in ["メールアドレスでログイン", "メールでログイン"]:
-        try:
-            page.get_by_role("button", name=re.compile(label)).click(timeout=1000)
-            break
-        except Exception:
-            pass
-
-    # フォーム入力欄を“柔らかい”セレクタで拾う
-    email_sel = "input[type='email'], input[name='email'], input[autocomplete='username'], input[placeholder*='メール'], input[placeholder*='note ID']"
-    pass_sel  = "input[type='password'], input[name='password'], input[autocomplete='current-password'], input[placeholder*='パスワード']"
-
-    try:
-        page.wait_for_selector(email_sel, timeout=12000)
-        page.locator(email_sel).first.fill(email)
-        page.locator(pass_sel).first.fill(password)
-    except Exception:
-        # 最悪 form から強引に
-        form = page.locator("form").first
-        form.locator("input").nth(0).fill(email)
-        form.locator("input[type='password']").first.fill(password)
-
-    # 送信（ナビが起きるなら待つ。起きなくても続行）
-    navigated = False
-    try:
-        with page.expect_navigation(wait_until="load", timeout=8000):
-            page.get_by_role("button", name=re.compile("ログイン|Sign in")).click(timeout=1500)
-        navigated = True
-    except Exception:
-        try:
-            with page.expect_navigation(wait_until="load", timeout=8000):
-                page.keyboard.press("Enter")
-            navigated = True
-        except Exception:
-            pass
-
-    # ネットワーク静止まで待機してから成功判定
-    try:
-        page.wait_for_load_state("networkidle")
-    except Exception:
-        pass
-
-    success_selectors = [
-        "a[href*='/home']",
-        "a[href*='/notifications']",
-        "a[href^='/me']",
-        "a[href*='/new']",
-        "img[alt*='アイコン'], img[alt*='プロフィール']",
-    ]
-    ok = False
-    for _ in range(24):  # 最大 ~12秒
-        try:
-            if "/home" in page.url or page.url.rstrip("/") == "https://note.com":
-                ok = True
-                break
-            if any(page.locator(sel).count() > 0 for sel in success_selectors):
-                ok = True
-                break
-        except Exception:
-            pass
-        page.wait_for_timeout(500)
-
-    if not ok:
-        raise RuntimeError(f"Login might have failed. current url={page.url}, navigated={navigated}")
-
-    # サブドメイン跨ぎのCookie問題を避けるために一度ホームへ
-    try:
-        page.goto("https://note.com", timeout=30000, wait_until="domcontentloaded")
-    except Exception:
-        pass
-
-
-# === 置き換え：open_new_editor =========================
-def open_new_editor(page):
-    """
-    エディタを開く。URL形状(/new or /edit)に依存せず、
-    タイトル欄 or 本文エリア(contenteditable)の出現で準備完了と判断する。
-    """
-    candidates = [
-        "https://editor.note.com/new",
-        "https://editor.note.com/new/",
-        "https://note.com/new",
-        "https://note.com/notes/new",
-    ]
-    title_sel = "textarea[placeholder*='記事タイトル'], [placeholder*='記事タイトル']"
-    body_sel  = "[contenteditable='true']"
-
-    for url in candidates:
-        try:
-            page.goto(url, timeout=60000, wait_until="domcontentloaded")
-            try:
-                page.wait_for_load_state("networkidle", timeout=15000)
-            except Exception:
-                pass
-
-            for _ in range(40):  # 最大 ~12秒
-                if page.locator(title_sel).count() > 0:
-                    return
-                if page.locator(body_sel).count() > 0:
-                    return
-                page.wait_for_timeout(300)
-        except Exception:
-            continue
-
-    raise RuntimeError("エディタが開けませんでした（URL遷移ではなくUIの出現待ちにしても失敗）")
-
-
-# ====== クリップボード貼り付け ======
-def paste_markdown(page, text: str):
-    """
-    クリップボードに text を入れて Ctrl+V で貼り付け。
-    note 側が Markdown を解釈して見出し/リスト等を整形してくれる。
-    """
-    page.evaluate("async (t) => await navigator.clipboard.writeText(t)", text)
-    page.keyboard.press("Control+V")
-
-# ====== Git の最終コミット時間（Last commit date） ======
+# ====== Git 最終コミット時刻 ======
 def git_last_commit_ts(repo_root: Path, file_path: Path) -> int:
-    """
-    file_path を最後に更新した Git コミットの UNIX 時刻(%ct) を取得。
-    失敗したらファイルの mtime にフォールバック。
-    """
     try:
         rel = str(file_path.relative_to(repo_root))
     except ValueError:
         rel = str(file_path)
-
     try:
         out = subprocess.check_output(
             ["git", "log", "-1", "--format=%ct", "--", rel],
@@ -215,117 +69,181 @@ def git_last_commit_ts(repo_root: Path, file_path: Path) -> int:
     except Exception:
         return int(file_path.stat().st_mtime)
 
-# ====== カバー画像（サムネイル）任意アップロード ======
-IMG_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
-
-def _resolve_repo_path(path_like: str) -> Path:
-    """
-    config の相対パスを リポジトリルート基準に解決。
-    note-auto/ から見て1つ上がリポジトリルートという前提。
-    """
-    p = Path(path_like)
-    if p.is_absolute():
-        return p
-    repo_root = (BASE / "..").resolve()
-    return (repo_root / p).resolve()
-
-def _pick_random_image(images_dir: Path) -> Path | None:
-    if not images_dir.exists():
-        return None
-    files = [p for p in images_dir.rglob("*") if p.is_file() and p.suffix.lower() in IMG_EXTS]
-    if not files:
-        return None
-    return random.choice(files)
-
-def _set_cover_image_any(page, img_path: Path) -> bool:
-    """
-    現在のページ（公開画面 or エディタのバナー）でカバー画像のアップロードポイントを探し、
-    file chooser で img_path をセット。成功したら True。
-    """
-    button_patterns = [
-        r"見出し画像", r"カバー画像", r"サムネイル", r"画像を選択", r"アップロード", r"ファイルを選択",
-    ]
-    for pat in button_patterns:
-        try:
-            with page.expect_event("filechooser", timeout=1200) as fc:
-                page.get_by_role("button", name=re.compile(pat)).first.click()
-            chooser = fc.value
-            chooser.set_files(str(img_path))
-            page.wait_for_timeout(800)
-            return True
-        except Exception:
-            pass
-
-    banner_patterns = [
-        r"見出し画像を設定してみませんか", r"見出し画像", r"カバー画像", r"サムネイル",
-    ]
-    for pat in banner_patterns:
-        try:
-            with page.expect_event("filechooser", timeout=1000) as fc:
-                page.get_by_text(re.compile(pat)).first.click()
-            chooser = fc.value
-            chooser.set_files(str(img_path))
-            page.wait_for_timeout(800)
-            return True
-        except Exception:
-            pass
-
-    return False
-
-# ==== 差し替え：publish_flow（後方互換：cover_pathは任意・未使用でもOK） ====
-def publish_flow(page, cover_path: Path | str | None = None):
-    """
-    右上の『公開に進む』→ publish 画面 → 『投稿』確定まで。
-    cover_path が渡されていれば publish 画面でサムネイル画像を設定する。
-    """
-    # 1) 公開に進む
-    page.get_by_role("button", name=re.compile("公開に進む")).click(timeout=15000)
-    page.wait_for_url("**/publish/**", timeout=60000)
+# ====== Playwrightユーティリティ ======
+def safe_click(page, locator_expr: str, timeout: int = 3000) -> bool:
     try:
-        page.wait_for_load_state("networkidle")
+        page.locator(locator_expr).first.click(timeout=timeout)
+        return True
+    except Exception:
+        return False
+
+def login(page, email, password):
+    page.goto("https://note.com/login", timeout=60000, wait_until="domcontentloaded")
+
+    # Cookie等のモーダル掃除
+    for label in ["同意", "同意する", "OK", "Accept", "許可", "わかった", "閉じる", "×", "スキップ"]:
+        try:
+            page.get_by_role("button", name=re.compile(label)).click(timeout=800)
+        except Exception:
+            pass
+
+    # 「メールでログイン」系
+    for label in ["メールアドレスでログイン", "メールでログイン"]:
+        try:
+            page.get_by_role("button", name=re.compile(label)).click(timeout=1000)
+            break
+        except Exception:
+            pass
+
+    email_sel = "input[type='email'], input[name='email'], input[autocomplete='username'], input[placeholder*='メール'], input[placeholder*='note ID']"
+    pass_sel  = "input[type='password'], input[name='password'], input[autocomplete='current-password'], input[placeholder*='パスワード']"
+
+    page.wait_for_selector(email_sel, timeout=15000)
+    page.locator(email_sel).first.fill(email)
+    page.locator(pass_sel).first.fill(password)
+
+    # 送信
+    try:
+        with page.expect_navigation(wait_until="load", timeout=12000):
+            page.get_by_role("button", name=re.compile("ログイン|Sign in")).click(timeout=1500)
+    except Exception:
+        try:
+            with page.expect_navigation(wait_until="load", timeout=12000):
+                page.keyboard.press("Enter")
+        except Exception:
+            pass
+
+    # 成功判定
+    for _ in range(24):
+        if "/home" in page.url or page.url.rstrip("/") == "https://note.com":
+            break
+        for sel in ["a[href*='/home']","a[href^='/me']","img[alt*='アイコン']","a[href*='/new']"]:
+            if page.locator(sel).count() > 0:
+                break
+        page.wait_for_timeout(500)
+
+    # ホームを一度踏む（Cookie/ドメイン跨ぎ安定）
+    try:
+        page.goto("https://note.com/", timeout=30000, wait_until="domcontentloaded")
     except Exception:
         pass
 
-    # 2) 妨げ要素の掃除（失敗しても無視）
-    for sel in ["button:has-text('OK')", "button:has-text('閉じる')",
-                "button:has-text('スキップ')", "button:has-text('わかった')"]:
+def open_editor_and_get_note_id(page) -> Optional[str]:
+    """
+    /new → /notes/<id>/edit へ到達。id を返す。
+    """
+    # 明示フロー：ホーム → new
+    page.goto("https://note.com/", timeout=60000, wait_until="domcontentloaded")
+    page.goto("https://editor.note.com/new", timeout=60000, wait_until="domcontentloaded")
+
+    # /notes/<id>/edit/ への遷移を待つ（SPAでもURLが変わる想定）
+    note_id = None
+    for _ in range(80):  # 最大 ~24s
+        m = re.search(r"/notes/([^/]+)/edit/?", page.url)
+        if m:
+            note_id = m.group(1)
+            break
+        # UIだけ先に出る場合もあるので、出現チェック
+        if page.locator("[contenteditable='true']").count() > 0 or \
+           page.locator("textarea[placeholder*='記事タイトル']").count() > 0:
+            # まだURLが変わってなくても続行（IDは後で拾う）
+            pass
+        page.wait_for_timeout(300)
+
+    # 念のためIDが取れてない場合は、編集画面内リンクから拾う
+    if not note_id:
         try:
-            page.locator(sel).first.click(timeout=800)
+            hrefs = page.locator("a[href*='/notes/']").all()
+            for h in hrefs:
+                href = h.get_attribute("href") or ""
+                m2 = re.search(r"/notes/([^/]+)/", href)
+                if m2:
+                    note_id = m2.group(1); break
         except Exception:
             pass
 
-    # 「無料」チェックが外れていたら入れておく（無ければ無視）
+    # 最低限、エディタUIがあることは確認
+    for _ in range(40):
+        if page.locator("[contenteditable='true']").count() > 0 or \
+           page.locator("textarea[placeholder*='記事タイトル']").count() > 0:
+            break
+        page.wait_for_timeout(300)
+
+    return note_id
+
+def paste_markdown(page, text: str):
+    page.evaluate("async (t) => await navigator.clipboard.writeText(t)", text)
+    # ランナーはLinuxなので基本Ctrl+VでOK
+    page.keyboard.press("Control+V")
+
+def save_draft(page):
+    """
+    下書き保存を確実に踏む。
+    """
+    # ボタンで保存
+    for pat in [r"下書き保存", r"保存", r"Save draft"]:
+        try:
+            page.get_by_role("button", name=re.compile(pat)).first.click(timeout=3000)
+            break
+        except Exception:
+            continue
+
+    # トースト or 状態安定待ち
+    for _ in range(30):
+        toast = page.get_by_text(re.compile(r"保存しました|保存完了|保存されました|Saved")).count()
+        if toast > 0:
+            break
+        page.wait_for_timeout(300)
+
+def go_to_publish(page, note_id: Optional[str]):
+    """
+    『公開に進む』をクリック → /publish に到達する。
+    note_id が取れていればURL直遷移フォールバックも持つ。
+    """
+    # まずはボタンで遷移
+    try:
+        page.get_by_role("button", name=re.compile(r"公開に進む")).click(timeout=8000)
+    except Exception:
+        pass
+
+    # /publish/ を待つ（ボタン→SPA遷移想定）
+    ok = False
+    for _ in range(40):
+        if "/publish/" in page.url:
+            ok = True; break
+        page.wait_for_timeout(300)
+
+    # だめならURL直叩き
+    if not ok and note_id:
+        page.goto(f"https://editor.note.com/notes/{note_id}/publish/", timeout=60000, wait_until="domcontentloaded")
+
+    # 最終確認
+    if "/publish/" not in page.url:
+        raise RuntimeError("publish画面へ遷移できませんでした")
+
+def publish_flow(page):
+    """
+    publish画面で『投稿』確定。
+    """
+    try:
+        page.wait_for_load_state("networkidle", timeout=15000)
+    except Exception:
+        pass
+
+    # 「無料」チェック（あればON）
     try:
         page.locator("label:has-text('無料')").first.click(timeout=800)
     except Exception:
         pass
 
-    # 2.5) カバー画像（任意）
-    if cover_path:
-        try:
-            cp = Path(cover_path)
-            _set_cover_image_any(page, cp)
-        except Exception:
-            pass  # 任意機能なので握りつぶす
-
-    # 3) 投稿ボタン（文言ゆれ対応）
-    post_btn = page.get_by_role("button",
-        name=re.compile(r"(投稿する|公開する|投稿を予約)")).first
-
-    # 画面下部までスクロールして可視化
-    try:
-        page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-    except Exception:
-        pass
-
-    # 表示＆活性を待つ
+    # 投稿/公開ボタン
+    post_btn = page.get_by_role("button", name=re.compile(r"(投稿する|公開する|投稿を予約)")).first
     post_btn.wait_for(state="visible", timeout=20000)
     try:
         page.wait_for_function("el => !el.disabled", arg=post_btn, timeout=15000)
     except Exception:
         pass
 
-    # クリック（通常 → フォールバック）
     try:
         post_btn.click(timeout=15000)
     except Exception:
@@ -335,63 +253,36 @@ def publish_flow(page, cover_path: Path | str | None = None):
                 handle.scroll_into_view_if_needed(timeout=2000)
                 page.evaluate("(el)=>el.click()", handle)
         except Exception:
-            try:
-                post_btn.focus()
-                page.keyboard.press("Enter")
-            except Exception:
-                pass
+            page.keyboard.press("Enter")
 
-    # 4) 遷移完了待ち
-    try:
-        page.wait_for_load_state("networkidle")
-    except Exception:
-        pass
-    for _ in range(20):
+    # publish から抜けるまで待つ
+    for _ in range(40):
         if "/publish" not in page.url:
             break
-        page.wait_for_timeout(500)
+        page.wait_for_timeout(300)
 
-
-
-# --- 投稿 -----------------
+# --- 投稿本体 ---
 def create_post(page, author_id, title, body_md, footer_md=None, canonical_link=None, tags=None):
-    # ホームを踏んでからエディタへ（サブドメインCookie対策）
-    try:
-        page.goto("https://note.com", timeout=30000, wait_until="domcontentloaded")
-    except Exception:
-        pass
+    # エディタを開く → note_id取得
+    note_id = open_editor_and_get_note_id(page)
 
-    open_new_editor(page)
-
-    # タイトルはタイプ
+    # タイトル
     try:
-        title_box = page.locator("textarea[placeholder='記事タイトル'], [placeholder='記事タイトル']").first
+        title_box = page.locator("textarea[placeholder*='記事タイトル'], [placeholder*='記事タイトル']").first
         title_box.click()
+        page.keyboard.type(title)
     except Exception:
         pass
-    page.keyboard.type(title)
 
-    # 本文は“貼り付け”で一括投入（Markdown解釈をnoteに任せる）
+    # 本文貼付（Markdown）
     editor = page.locator('[contenteditable="true"]').first
     editor.click()
     paste_markdown(page, (body_md or "").strip())
 
-    # カバー画像の選択（config に upload_cover/cover_images_dir がある場合のみ）
-    cover_path = None
-    try:
-        cfg = load_cfg()
-        want_cover = cfg.get("note", {}).get("upload_cover")
-        cover_dir = cfg.get("note", {}).get("cover_images_dir")
-        if want_cover and cover_dir:
-            resolved = _resolve_repo_path(cover_dir)
-            img = _pick_random_image(resolved)
-            if img:
-                cover_path = img
-    except Exception:
-        pass  # 任意機能なので握りつぶす
-
-    # 公開（カバー画像パスを渡す）
-    publish_flow(page, cover_path=cover_path)
+    # 下書き保存 → 公開に進む → publish
+    save_draft(page)
+    go_to_publish(page, note_id)
+    publish_flow(page)
 
 # ====== メイン ======
 def run_once():
@@ -402,7 +293,6 @@ def run_once():
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        # クリップボード権限を付与
         ctx = browser.new_context(permissions=["clipboard-read", "clipboard-write"])
         page = ctx.new_page()
         login(page, email, password)
@@ -414,13 +304,8 @@ def run_once():
             pattern = src.get("glob", "**/*.md")
             max_per_run = int(src.get("max_per_run", 1))
 
-            # ▼ Git の「Last commit date」降順で並べ替える（最新優先）
             candidates = list(repo_dir.glob(pattern))
-            files = sorted(
-                candidates,
-                key=lambda f: git_last_commit_ts(repo_dir, f),
-                reverse=True,
-            )
+            files = sorted(candidates, key=lambda f: git_last_commit_ts(repo_dir, f), reverse=True)
 
             pushed = 0
             for f in files:
@@ -428,24 +313,27 @@ def run_once():
                 md_title, md_body, fm = md_body_from_file(f)
                 link = fm.get("canonical") or fm.get("link") or fm.get("url") or ""
                 curr_sha = sha1_of_text(md_body)
-
                 prev_sha = posted_map.get(rel)
                 if prev_sha == curr_sha:
-                    continue  # 変更なしはスキップ
+                    continue
 
-                create_post(
-                    page=page,
-                    author_id=cfg["note"]["author_id"],
-                    title=md_title,
-                    body_md=md_body,
-                    footer_md=None,
-                    canonical_link=link,
-                    tags=fm.get("tags", []),
-                )
+                try:
+                    create_post(
+                        page=page,
+                        author_id=cfg["note"]["author_id"],
+                        title=md_title,
+                        body_md=md_body,
+                        footer_md=None,
+                        canonical_link=link,
+                        tags=fm.get("tags", []),
+                    )
+                    posted_map[rel] = curr_sha
+                    changed = True
+                    pushed += 1
+                except Exception as e:
+                    # 壊れても他処理は続ける（保守コスト最小化）
+                    print(f"[WARN] note post skipped: {rel} -> {e}")
 
-                posted_map[rel] = curr_sha
-                changed = True
-                pushed += 1
                 if pushed >= max_per_run:
                     break
 
